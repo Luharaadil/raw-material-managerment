@@ -1,0 +1,5 @@
+{
+  "name": "Material Consumption Calculator",
+  "description": "Calculate raw material consumption based on daily production plans and material specifications.",
+  "requestFramePermissions": []
+}

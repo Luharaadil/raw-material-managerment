@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { Upload, FileSpreadsheet, Calculator, Download, AlertCircle, Settings2, ChevronDown, ChevronUp, Link as LinkIcon, X } from 'lucide-react';
+import { Upload, FileSpreadsheet, Calculator, Download, AlertCircle, Settings2, ChevronDown, ChevronUp, Link as LinkIcon, X, LayoutDashboard, BarChart3, Copy, Check } from 'lucide-react';
+import { toBlob } from 'html-to-image';
 
 interface Spec {
   rubberName: string;
@@ -63,8 +64,57 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [showDetailedSummaryModal, setShowDetailedSummaryModal] = useState(false);
   const [indiaDays, setIndiaDays] = useState(7);
   const [otherDays, setOtherDays] = useState(30);
+  const [isCopying, setIsCopying] = useState(false);
+  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const summaryRef = useRef<HTMLDivElement>(null);
+  const detailedSummaryRef = useRef<HTMLDivElement>(null);
+
+  const copyAsImage = async (ref: React.RefObject<HTMLDivElement>) => {
+    if (!ref.current) return;
+    
+    setIsCopying(true);
+    try {
+      // Create a temporary clone for capture to ensure it's always desktop-sized
+      const blob = await toBlob(ref.current, {
+        backgroundColor: '#ffffff',
+        pixelRatio: 3,
+        width: 1400,
+        style: {
+          margin: '0',
+          padding: '40px',
+          transform: 'none',
+          width: '1400px',
+          display: 'block',
+          zoom: '1'
+        }
+      });
+      
+      if (blob) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            [blob.type]: blob
+          })
+        ]);
+        alert('Dashboard copied to clipboard as image! You can now paste it in WhatsApp, Excel, etc.');
+      }
+    } catch (err) {
+      console.error('Failed to copy image:', err);
+      alert('Failed to copy image. Please try again. Note: This feature may require a modern browser.');
+    } finally {
+      setIsCopying(false);
+    }
+  };
 
   const fetchGoogleSheet = async (url: string): Promise<any[][]> => {
     try {
@@ -81,6 +131,13 @@ export default function App() {
       const exportUrl = `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid}`;
 
       const response = await fetch(exportUrl);
+      
+      // Check if the response is HTML (which usually means a login redirect)
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('text/html')) {
+        throw new Error('The Google Sheet is not public. Please set sharing to "Anyone with the link can view" in Google Sheets.');
+      }
+
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
           throw new Error(`Access Denied (Status ${response.status}). Please ensure the Google Sheet sharing settings are set to "Anyone with the link can view".`);
@@ -100,7 +157,7 @@ export default function App() {
   const parseSpec = (data: any[][], parsedConfig: any): Spec[] => {
     const specs: Spec[] = [];
     const matRow = data[parsedConfig.matRow];
-    if (!matRow) throw new Error(`Material codes row (Row ${config.specMatRow}) not found in Spec Database.`);
+    if (!matRow) throw new Error(`Material codes row (Row ${parsedConfig.matRow}) not found in Spec Database.`);
     
     const materialCodes = matRow.slice(parsedConfig.matStartCol);
     
@@ -215,6 +272,25 @@ export default function App() {
     return db;
   };
 
+  const parseExtraUsage = (data: any[][]): Record<string, number> => {
+    const extraUsage: Record<string, number> = {};
+    const matCodeCol = colToIndex('I');
+    const usageCol = colToIndex('K');
+
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (!row) continue;
+      
+      const matCode = String(row[matCodeCol] || '').trim();
+      const usage = parseFloat(row[usageCol]);
+      
+      if (matCode && !isNaN(usage) && usage > 0) {
+        extraUsage[matCode] = (extraUsage[matCode] || 0) + usage;
+      }
+    }
+    return extraUsage;
+  };
+
   const handleCalculate = async () => {
     setIsCalculating(true);
     setError(null);
@@ -239,11 +315,17 @@ export default function App() {
       const planned = parseProd(prodData, parsedConfig);
       const inventory = parseInventory(inventoryData);
       const database = parseDatabase(dbData);
+      const extraUsageMap = parseExtraUsage(dbData);
 
       if (specs.length === 0) throw new Error('No active specs (marked with "V") found in Spec Database.');
       if (planned.length === 0) throw new Error('No valid production batches found in Production Plan.');
 
       const consumption: Record<string, number> = {};
+      
+      // Add extra usage from database sheet
+      for (const [matCode, usage] of Object.entries(extraUsageMap)) {
+        consumption[matCode] = (consumption[matCode] || 0) + usage;
+      }
       
       for (const plan of planned) {
         const baseCode = plan.rubberName.substring(0, 4);
@@ -368,7 +450,7 @@ export default function App() {
     const rows: string[][] = [];
     
     Object.entries(categorizedResults).forEach(([category, items]) => {
-      items.forEach(r => {
+      (items as ConsumptionResult[]).forEach(r => {
         const stdDays = r.countryOfOrigin.toUpperCase() === 'INDIA' ? indiaDays : otherDays;
         const standardInventory = r.totalKg * stdDays;
 
@@ -419,14 +501,352 @@ export default function App() {
              
             </p>
           </header>
-          <button 
-            onClick={() => setShowSettings(true)}
-            className="p-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 text-slate-600 transition-colors"
-            title="Settings"
-          >
-            <Settings2 className="w-5 h-5" />
-          </button>
+          <div className="flex flex-col gap-2">
+            <button 
+              onClick={() => setShowSettings(true)}
+              className="p-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 text-slate-600 transition-colors"
+              title="Settings"
+            >
+              <Settings2 className="w-5 h-5" />
+            </button>
+            <button 
+              onClick={() => setShowSummaryModal(true)}
+              className="p-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 text-indigo-600 transition-colors"
+              title="Summary Dashboard"
+            >
+              <LayoutDashboard className="w-5 h-5" />
+            </button>
+            <button 
+              onClick={() => setShowDetailedSummaryModal(true)}
+              className="p-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 text-emerald-600 transition-colors"
+              title="Detailed Origin Summary"
+            >
+              <BarChart3 className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+
+        {showDetailedSummaryModal && (
+          <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-7xl max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 className="text-lg font-semibold text-slate-900">Detailed Origin Summary (Imported vs Local)</h3>
+                <button onClick={() => setShowDetailedSummaryModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-2 md:p-6 overflow-auto bg-slate-100 flex flex-col items-center">
+                <div 
+                  ref={detailedSummaryRef} 
+                  className="bg-white shadow-sm origin-top transition-transform" 
+                  style={{ 
+                    width: '1300px',
+                    ...({
+                      zoom: windowWidth < 1300 ? (windowWidth - 40) / 1300 : 1
+                    } as any)
+                  }}
+                >
+                  {Object.keys(categorizedResults).length === 0 ? (
+                    <div className="text-center py-12 text-slate-500 bg-white w-full">
+                      Please calculate consumption first to see the detailed summary.
+                    </div>
+                  ) : (() => {
+                    const detailedSummary: Record<string, {
+                      totalInv: number;
+                      imported: { inv: number; setting: number; usage: number };
+                      local: { inv: number; setting: number; usage: number };
+                    }> = {};
+
+                    Object.entries(categorizedResults).forEach(([category, items]) => {
+                      let totalInv = 0;
+                      const imported = { inv: 0, setting: 0, usage: 0 };
+                      const local = { inv: 0, setting: 0, usage: 0 };
+
+                      (items as ConsumptionResult[]).forEach(item => {
+                        const isLocal = item.countryOfOrigin.toUpperCase() === 'INDIA';
+                        const stdDays = isLocal ? indiaDays : otherDays;
+                        const setting = item.totalKg * stdDays;
+                        
+                        totalInv += item.warehouseInventory;
+                        if (isLocal) {
+                          local.inv += item.warehouseInventory;
+                          local.setting += setting;
+                          local.usage += item.totalKg;
+                        } else {
+                          imported.inv += item.warehouseInventory;
+                          imported.setting += setting;
+                          imported.usage += item.totalKg;
+                        }
+                      });
+
+                      detailedSummary[category] = { totalInv, imported, local };
+                    });
+
+                    const grandTotalInv = Object.values(detailedSummary).reduce((sum, d) => sum + d.totalInv, 0);
+                    const grandTotalUsage = Object.values(detailedSummary).reduce((sum, d) => sum + (d.imported.usage + d.local.usage), 0);
+                    const grandTotalSetting = Object.values(detailedSummary).reduce((sum, d) => sum + (d.imported.setting + d.local.setting), 0);
+                    
+                    const totalImportedInv = Object.values(detailedSummary).reduce((sum, d) => sum + d.imported.inv, 0);
+                    const totalLocalInv = Object.values(detailedSummary).reduce((sum, d) => sum + d.local.inv, 0);
+
+                    const today = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
+
+                    return (
+                      <div className="space-y-6 p-4">
+                        <div className="bg-[#fff2cc] p-4 rounded-t-xl border-x border-t border-slate-300 flex justify-between items-center">
+                          <span className="text-xl font-bold">{today}</span>
+                          <h2 className="text-2xl font-bold text-center flex-1">原管倉庫 原材料種類_水位_存放率_庫存天數_使用量 彙整</h2>
+                        </div>
+                        <div className="overflow-hidden border border-slate-300 rounded-b-xl">
+                          <table className="w-full text-[13px] text-left border-collapse bg-white">
+                            <thead>
+                              <tr className="bg-[#a9d18e] border-b border-slate-300 text-slate-900 font-bold">
+                                <th className="px-2 py-3 border-r border-slate-300 text-center">原材料類別名稱</th>
+                                <th className="px-2 py-3 border-r border-slate-300 text-center">原管總庫存(噸)</th>
+                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#ffd966]">進口 / 在地</th>
+                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#ffd966]">原材料庫存占比</th>
+                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#ffd966]">原管庫存(噸)</th>
+                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#00b0f0] text-white">原材料庫存水位設定(噸)</th>
+                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#00b0f0] text-white">原材料庫存水位存放率</th>
+                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#92d050]">每天平均使用量(噸)</th>
+                                <th className="px-2 py-3 text-center bg-[#ffcc00]">現狀平均庫存天數</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-300">
+                              {Object.entries(detailedSummary).map(([cat, data]) => {
+                                const catUsage = data.imported.usage + data.local.usage;
+                                const catInvDays = catUsage > 0 ? data.totalInv / catUsage : 0;
+                                
+                                return (
+                                  <React.Fragment key={cat}>
+                                    <tr className="border-b border-slate-300">
+                                      <td rowSpan={2} className="px-2 py-4 border-r border-slate-300 text-center font-bold text-slate-900">{cat}</td>
+                                      <td rowSpan={2} className="px-2 py-4 border-r border-slate-300 text-center font-bold text-3xl bg-[#f2f2f2]">{(data.totalInv / 1000).toFixed(0)}</td>
+                                      <td className="px-2 py-2 border-r border-slate-300 text-center text-xs">進口原料<br/><span className="italic">Imported materials</span></td>
+                                      <td className="px-2 py-2 border-r border-slate-300 text-center font-bold">{(grandTotalInv > 0 ? (data.imported.inv / grandTotalInv) * 100 : 0).toFixed(1)}%</td>
+                                      <td className="px-2 py-2 border-r border-slate-300 text-center font-bold">{(data.imported.inv / 1000).toFixed(0)}</td>
+                                      <td className="px-2 py-2 border-r border-slate-300 text-center font-bold">{(data.imported.setting / 1000).toFixed(0)}</td>
+                                      <td className="px-2 py-2 border-r border-slate-300 text-center font-bold">{(data.imported.setting > 0 ? (data.imported.inv / data.imported.setting) * 100 : 0).toFixed(0)}%</td>
+                                      <td className="px-2 py-2 border-r border-slate-300 text-center font-bold">{(data.imported.usage / 1000).toFixed(1)}</td>
+                                      <td rowSpan={2} className="px-2 py-4 text-center font-bold text-4xl bg-[#fff2cc]">{catInvDays.toFixed(0)}</td>
+                                    </tr>
+                                    <tr className="border-b border-slate-300">
+                                      <td className="px-2 py-2 border-r border-slate-300 text-center text-xs">在地原料<br/><span className="italic">Local materials</span></td>
+                                      <td className="px-2 py-2 border-r border-slate-300 text-center font-bold">{(grandTotalInv > 0 ? (data.local.inv / grandTotalInv) * 100 : 0).toFixed(1)}%</td>
+                                      <td className="px-2 py-2 border-r border-slate-300 text-center font-bold">{(data.local.inv / 1000).toFixed(0)}</td>
+                                      <td className="px-2 py-2 border-r border-slate-300 text-center font-bold">{(data.local.setting / 1000).toFixed(0)}</td>
+                                      <td className="px-2 py-2 border-r border-slate-300 text-center font-bold">{(data.local.setting > 0 ? (data.local.inv / data.local.setting) * 100 : 0).toFixed(0)}%</td>
+                                      <td className="px-2 py-2 border-r border-slate-300 text-center font-bold">{(data.local.usage / 1000).toFixed(1)}</td>
+                                    </tr>
+                                  </React.Fragment>
+                                );
+                              })}
+                              <tr className="bg-[#a9d18e] text-slate-900 font-bold border-t-2 border-slate-400">
+                                <td className="px-2 py-4 border-r border-slate-300 text-center">原材料每日<br/>總使用量 (噸)</td>
+                                <td className="px-2 py-4 border-r border-slate-300 text-center text-3xl">{(grandTotalUsage / 1000).toFixed(1)}</td>
+                                <td className="px-2 py-4 border-r border-slate-300 text-center bg-[#ffd966]">原材料庫存<br/>總量 (噸)</td>
+                                <td className="px-2 py-4 border-r border-slate-300 text-center text-3xl bg-[#f2f2f2]">{ (grandTotalInv / 1000).toFixed(0) }</td>
+                                <td className="px-2 py-4 border-r border-slate-300 text-center bg-[#00b0f0] text-white">原材料水位<br/>設定(噸)</td>
+                                <td className="px-2 py-4 border-r border-slate-300 text-center text-3xl bg-[#f2f2f2]">{(grandTotalSetting / 1000).toFixed(0)}</td>
+                                <td className="px-2 py-4 border-r border-slate-300 text-center bg-[#92d050]">原材料庫存天數</td>
+                                <td colSpan={2} className="px-2 py-4 text-center text-4xl bg-[#f2f2f2]">{grandTotalUsage > 0 ? (grandTotalInv / grandTotalUsage).toFixed(0) : 0}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="w-full border-2 border-slate-400 rounded-xl overflow-hidden">
+                          <table className="w-full text-2xl text-left border-collapse bg-white">
+                            <tbody className="divide-y divide-slate-300">
+                              <tr>
+                                <td className="px-6 py-4 font-bold text-slate-900 border-r border-slate-300">Imported materials 進口原材料(噸)</td>
+                                <td className="px-6 py-4 text-center font-bold border-r border-slate-300">{(totalImportedInv / 1000).toFixed(0)}</td>
+                                <td className="px-6 py-4 text-center font-bold text-slate-900">{(grandTotalInv > 0 ? (totalImportedInv / grandTotalInv) * 100 : 0).toFixed(1)}%</td>
+                              </tr>
+                              <tr>
+                                <td className="px-6 py-4 font-bold text-slate-900 border-r border-slate-300">Local materials 在地原材料(噸)</td>
+                                <td className="px-6 py-4 text-center font-bold border-r border-slate-300">{(totalLocalInv / 1000).toFixed(0)}</td>
+                                <td className="px-6 py-4 text-center font-bold text-slate-900">{(grandTotalInv > 0 ? (totalLocalInv / grandTotalInv) * 100 : 0).toFixed(1)}%</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t border-slate-100 flex justify-between items-center bg-slate-50">
+                <button 
+                  onClick={() => copyAsImage(detailedSummaryRef)}
+                  disabled={isCopying || Object.keys(categorizedResults).length === 0}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl font-medium hover:bg-emerald-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isCopying ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {isCopying ? 'Copying...' : 'Copy as Image'}
+                </button>
+                <button 
+                  onClick={() => setShowDetailedSummaryModal(false)} 
+                  className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors shadow-sm"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showSummaryModal && (
+          <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 className="text-lg font-semibold text-slate-900">Inventory & Usage Summary</h3>
+                <button onClick={() => setShowSummaryModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-2 md:p-6 overflow-auto bg-slate-100 flex flex-col items-center">
+                <div 
+                  ref={summaryRef} 
+                  className="bg-white shadow-sm origin-top p-8 space-y-8 transition-transform" 
+                  style={{ 
+                    width: '1200px',
+                    ...({
+                      zoom: windowWidth < 1200 ? (windowWidth - 40) / 1200 : 1
+                    } as any)
+                  }}
+                >
+                  {Object.keys(categorizedResults).length === 0 ? (
+                    <div className="text-center py-12 text-slate-500 bg-white w-full">
+                      Please calculate consumption first to see the summary dashboard.
+                    </div>
+                  ) : (() => {
+                    const summary: Record<string, { whInventory: number; invSetting: number; dailyUsage: number }> = {};
+                    Object.entries(categorizedResults).forEach(([category, items]) => {
+                      let whInventory = 0;
+                      let invSetting = 0;
+                      let dailyUsage = 0;
+                      (items as ConsumptionResult[]).forEach(item => {
+                        whInventory += item.warehouseInventory;
+                        const stdDays = item.countryOfOrigin.toUpperCase() === 'INDIA' ? indiaDays : otherDays;
+                        invSetting += item.totalKg * stdDays;
+                        dailyUsage += item.totalKg;
+                      });
+                      summary[category] = { whInventory, invSetting, dailyUsage };
+                    });
+
+                    const totalWh = Object.values(summary).reduce((sum, d) => sum + d.whInventory, 0);
+                    const totalSetting = Object.values(summary).reduce((sum, d) => sum + d.invSetting, 0);
+                    const totalUsage = Object.values(summary).reduce((sum, d) => sum + d.dailyUsage, 0);
+
+                    return (
+                      <>
+                        {/* Table 1 */}
+                        <div className="space-y-4">
+                          <h4 className="text-sm font-bold uppercase tracking-wider text-slate-500">WH Raw Material Inventory Summary</h4>
+                          <div className="overflow-hidden border border-slate-300 rounded-xl shadow-sm">
+                            <table className="w-full text-sm text-left border-collapse">
+                              <thead>
+                                <tr className="bg-[#f8fafc] border-b border-slate-300">
+                                  <th className="px-4 py-3 font-bold text-slate-700 bg-slate-100 border-r border-slate-300">Raw material category name</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 text-right border-r border-slate-300">WH inventory (tons)</th>
+                                  <th className="px-4 py-3 font-bold text-white text-right bg-[#00b0f0] border-r border-slate-300">Inventory setting (tons)</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 text-right bg-[#ffd966] border-r border-slate-300">Inventory ratio</th>
+                                  <th className="px-4 py-3 font-bold text-white text-right bg-[#00b0f0]">Inventory level rate</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-200">
+                                {Object.entries(summary).map(([cat, data]) => {
+                                  const ratio = totalWh > 0 ? (data.whInventory / totalWh) * 100 : 0;
+                                  const levelRate = data.invSetting > 0 ? (data.whInventory / data.invSetting) * 100 : 0;
+                                  return (
+                                    <tr key={cat} className="hover:bg-slate-50 transition-colors">
+                                      <td className="px-4 py-3 text-slate-900 font-medium border-r border-slate-200">{cat}</td>
+                                      <td className="px-4 py-3 text-right font-bold text-slate-700 border-r border-slate-200">{(data.whInventory / 1000).toFixed(0)}</td>
+                                      <td className="px-4 py-3 text-right font-bold text-slate-700 border-r border-slate-200">{(data.invSetting / 1000).toFixed(0)}</td>
+                                      <td className="px-4 py-3 text-right font-bold text-slate-700 border-r border-slate-200 bg-[#fff9db]">{ratio.toFixed(1)}%</td>
+                                      <td className="px-4 py-3 text-right font-bold text-slate-700 bg-[#e0f2fe]">{levelRate.toFixed(1)}%</td>
+                                    </tr>
+                                  );
+                                })}
+                                <tr className="bg-[#22c55e] text-white font-bold text-lg">
+                                  <td className="px-4 py-4 border-r border-green-600">Information consolidation</td>
+                                  <td className="px-4 py-4 text-right border-r border-green-600">{(totalWh / 1000).toFixed(0)}</td>
+                                  <td className="px-4 py-4 text-right border-r border-green-600">{(totalSetting / 1000).toFixed(0)}</td>
+                                  <td className="px-4 py-4 text-right border-r border-green-600">100%</td>
+                                  <td className="px-4 py-4 text-right">{totalSetting > 0 ? ((totalWh / totalSetting) * 100).toFixed(0) : 0}%</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* Table 2 */}
+                        <div className="space-y-4">
+                          <div className="flex justify-between items-end">
+                            <h4 className="text-sm font-bold uppercase tracking-wider text-slate-500">WH Raw Material Daily Usage/Inventory Days Summary</h4>
+                            <span className="text-xs font-mono text-slate-400">{new Date().toLocaleDateString()}</span>
+                          </div>
+                          <div className="overflow-hidden border border-slate-300 rounded-xl shadow-sm">
+                            <table className="w-full text-sm text-left border-collapse">
+                              <thead>
+                                <tr className="bg-[#f8fafc] border-b border-slate-300">
+                                  <th className="px-4 py-3 font-bold text-slate-700 bg-slate-100 border-r border-slate-300">Raw material category name</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 text-right border-r border-slate-300">WH inventory (tons)</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 text-right bg-[#92d050] border-r border-slate-300">Daily usage (tons)</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 text-right bg-[#ffd966] border-r border-slate-300">Usage ratio</th>
+                                  <th className="px-4 py-3 font-bold text-slate-900 text-right bg-[#ffcc00]">Current average inventory days</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-200">
+                                {Object.entries(summary).map(([cat, data]) => {
+                                  const usageRatio = totalUsage > 0 ? (data.dailyUsage / totalUsage) * 100 : 0;
+                                  const invDays = data.dailyUsage > 0 ? data.whInventory / data.dailyUsage : 0;
+                                  return (
+                                    <tr key={cat} className="hover:bg-slate-50 transition-colors">
+                                      <td className="px-4 py-3 text-slate-900 font-medium border-r border-slate-200">{cat}</td>
+                                      <td className="px-4 py-3 text-right font-bold text-slate-700 border-r border-slate-200">{(data.whInventory / 1000).toFixed(0)}</td>
+                                      <td className="px-4 py-3 text-right font-bold text-slate-700 border-r border-slate-200 bg-[#f0fdf4]">{(data.dailyUsage / 1000).toFixed(1)}</td>
+                                      <td className="px-4 py-3 text-right font-bold text-slate-700 border-r border-slate-200 bg-[#fff9db]">{usageRatio.toFixed(1)}%</td>
+                                      <td className="px-4 py-3 text-right font-bold text-slate-900 bg-[#fffbeb]">{invDays.toFixed(0)}</td>
+                                    </tr>
+                                  );
+                                })}
+                                <tr className="bg-[#22c55e] text-white font-bold text-lg">
+                                  <td className="px-4 py-4 border-r border-green-600">Information consolidation</td>
+                                  <td className="px-4 py-4 text-right border-r border-green-600">{(totalWh / 1000).toFixed(0)}</td>
+                                  <td className="px-4 py-4 text-right border-r border-green-600">{(totalUsage / 1000).toFixed(0)}</td>
+                                  <td className="px-4 py-4 text-right border-r border-green-600">100%</td>
+                                  <td className="px-4 py-4 text-right">{totalUsage > 0 ? (totalWh / totalUsage).toFixed(0) : 0}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t border-slate-100 flex justify-between items-center bg-slate-50">
+                <button 
+                  onClick={() => copyAsImage(summaryRef)}
+                  disabled={isCopying || Object.keys(categorizedResults).length === 0}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl font-medium hover:bg-emerald-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isCopying ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {isCopying ? 'Copying...' : 'Copy as Image'}
+                </button>
+                <button 
+                  onClick={() => setShowSummaryModal(false)} 
+                  className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors shadow-sm"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showSettings && (
           <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
@@ -517,76 +937,86 @@ export default function App() {
               <h2 className="text-lg font-semibold text-slate-900">{category}</h2>
             </div>
             
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-800 border-b border-slate-700">
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider">Material Code</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider">Material Name</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">Material Usage (kg)</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">Warehouse Inv.</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">Section Inv.</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">Total Inv.</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">Inv. Days</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right border-l border-slate-600">Total Inv. Days</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right border-l border-slate-600">Group Total Inv.</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">Std. Inv.</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider">Country of Origin</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {items.map((result, idx) => {
-                    const stdDays = result.countryOfOrigin.toUpperCase() === 'INDIA' ? indiaDays : otherDays;
-                    const standardInventory = result.totalKg * stdDays;
-                    
-                    return (
-                    <tr key={idx} className="hover:bg-indigo-50/50 transition-colors even:bg-slate-50">
-                      <td className="px-6 py-4 text-sm font-medium text-slate-900 font-mono">
-                        {result.materialCode}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-700">
-                        {result.materialName}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-700 text-right font-mono">
-                        {result.totalKg.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-700 text-right font-mono">
-                        {result.warehouseInventory.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-700 text-right font-mono">
-                        {result.sectionInventory.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-700 text-right font-mono font-medium">
-                        {result.totalInventory.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-700 text-right font-mono">
-                        {result.totalKg > 0 
-                          ? result.inventoryDays.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-                          : '-'}
-                      </td>
-                      {result.isFirstInGroup && (
-                        <td rowSpan={result.rowSpan} className="px-6 py-4 text-sm text-slate-900 text-right font-mono font-bold border-l border-slate-200 align-middle bg-slate-100/50">
-                          {result.groupTotalUsage! > 0 
-                            ? result.groupTotalInvDays!.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) 
+            <div className="overflow-x-auto border-t border-slate-100 flex flex-col items-center">
+              <div 
+                className="origin-top transition-transform"
+                style={{
+                  width: '1200px',
+                  ...({
+                    zoom: windowWidth < 1200 ? (windowWidth - 32) / 1200 : 1
+                  } as any)
+                }}
+              >
+                <table className="w-full text-sm text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-800 border-b border-slate-700">
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider">Material Code</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider">Material Name</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">Usage (kg)</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">WH Inv.</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">Sec. Inv.</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">Total</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">Days</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right border-l border-slate-600">Grp Days</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right border-l border-slate-600">Grp Inv.</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">Std.</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider">Origin</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {(items as ConsumptionResult[]).map((result, idx) => {
+                      const stdDays = result.countryOfOrigin.toUpperCase() === 'INDIA' ? indiaDays : otherDays;
+                      const standardInventory = result.totalKg * stdDays;
+                      
+                      return (
+                      <tr key={idx} className="hover:bg-indigo-50/50 transition-colors even:bg-slate-50">
+                        <td className="px-6 py-4 text-sm font-medium text-slate-900 font-mono">
+                          {result.materialCode}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-700">
+                          {result.materialName}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-700 text-right font-mono">
+                          {result.totalKg.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-700 text-right font-mono">
+                          {result.warehouseInventory.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-700 text-right font-mono">
+                          {result.sectionInventory.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-700 text-right font-mono font-medium">
+                          {result.totalInventory.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-700 text-right font-mono">
+                          {result.totalKg > 0 
+                            ? result.inventoryDays.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
                             : '-'}
                         </td>
-                      )}
-                      {result.isFirstInGroup && (
-                        <td rowSpan={result.rowSpan} className="px-6 py-4 text-sm text-slate-900 text-right font-mono font-bold border-l border-slate-200 align-middle bg-slate-100/50">
-                          {result.groupTotalInventory!.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        {result.isFirstInGroup && (
+                          <td rowSpan={result.rowSpan} className="px-6 py-4 text-sm text-slate-900 text-right font-mono font-bold border-l border-slate-200 align-middle bg-slate-100/50">
+                            {result.groupTotalUsage! > 0 
+                              ? result.groupTotalInvDays!.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) 
+                              : '-'}
+                          </td>
+                        )}
+                        {result.isFirstInGroup && (
+                          <td rowSpan={result.rowSpan} className="px-6 py-4 text-sm text-slate-900 text-right font-mono font-bold border-l border-slate-200 align-middle bg-slate-100/50">
+                            {result.groupTotalInventory!.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          </td>
+                        )}
+                        <td className="px-6 py-4 text-sm text-slate-700 text-right font-mono">
+                          {standardInventory.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </td>
-                      )}
-                      <td className="px-6 py-4 text-sm text-slate-700 text-right font-mono">
-                        {standardInventory.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-700">
-                        {result.countryOfOrigin}
-                      </td>
-                    </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        <td className="px-6 py-4 text-sm text-slate-700">
+                          {result.countryOfOrigin}
+                        </td>
+                      </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         ))}

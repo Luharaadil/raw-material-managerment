@@ -77,6 +77,10 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    handleCalculate();
+  }, []);
+
   const summaryRef = useRef<HTMLDivElement>(null);
   const detailedSummaryRef = useRef<HTMLDivElement>(null);
 
@@ -491,38 +495,47 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-4 md:p-6">
       <div className="w-full mx-auto space-y-8">
         
-        <div className="flex justify-between items-start">
-          <header className="space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-3">
-              <Calculator className="w-8 h-8 text-indigo-600" />
+        <div className="flex flex-col items-center gap-6 mb-8">
+          <header className="text-center space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">
               MRI Raw material management 原料管理
             </h1>
-            <p className="text-slate-500 max-w-2xl">
-             
-            </p>
           </header>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap justify-center gap-3">
             <button 
               onClick={() => setShowSettings(true)}
-              className="p-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 text-slate-600 transition-colors"
+              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 text-slate-600 transition-all hover:shadow-md"
               title="Settings"
             >
               <Settings2 className="w-5 h-5" />
+              <span className="hidden sm:inline text-sm font-medium">Settings</span>
             </button>
             <button 
               onClick={() => setShowSummaryModal(true)}
-              className="p-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 text-indigo-600 transition-colors"
+              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 text-indigo-600 transition-all hover:shadow-md"
               title="Summary Dashboard"
             >
               <LayoutDashboard className="w-5 h-5" />
+              <span className="hidden sm:inline text-sm font-medium">Summary</span>
             </button>
             <button 
               onClick={() => setShowDetailedSummaryModal(true)}
-              className="p-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 text-emerald-600 transition-colors"
+              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 text-emerald-600 transition-all hover:shadow-md"
               title="Detailed Origin Summary"
             >
               <BarChart3 className="w-5 h-5" />
+              <span className="hidden sm:inline text-sm font-medium">Detailed Summary</span>
             </button>
+            {Object.keys(categorizedResults).length > 0 && (
+              <button
+                onClick={exportToCSV}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 text-amber-600 transition-all hover:shadow-md"
+                title="Export All to CSV"
+              >
+                <Download className="w-5 h-5" />
+                <span className="hidden sm:inline text-sm font-medium">Export CSV</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -896,37 +909,12 @@ export default function App() {
           </div>
         )}
 
-        {/* Action Button */}
-        <div className="flex justify-start">
-          <button
-            onClick={handleCalculate}
-            disabled={isCalculating}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-8 py-3 rounded-xl font-medium shadow-sm transition-colors flex items-center gap-2"
-          >
-            {isCalculating ? (
-              <span className="flex items-center gap-2">
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Fetching & Calculating...
-              </span>
-            ) : (
-              <span className="flex items-center gap-2">
-                <Calculator className="w-5 h-5" />
-                Calculate Consumption
-              </span>
-            )}
-          </button>
-        </div>
-
-        {/* Global Export Button */}
-        {Object.keys(categorizedResults).length > 0 && (
-          <div className="flex justify-end">
-            <button
-              onClick={exportToCSV}
-              className="flex items-center gap-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-lg transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              Export All to CSV
-            </button>
+        {/* Loading State */}
+        {isCalculating && Object.keys(categorizedResults).length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl shadow-sm border border-slate-200">
+            <div className="w-12 h-12 border-4 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin mb-4" />
+            <p className="text-slate-600 font-medium">Fetching data and calculating consumption...</p>
+            <p className="text-slate-400 text-sm mt-2">This may take a few seconds depending on the sheet size.</p>
           </div>
         )}
 

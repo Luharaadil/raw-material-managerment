@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { Upload, FileSpreadsheet, Calculator, Download, AlertCircle, Settings2, ChevronDown, ChevronUp, Link as LinkIcon, X, LayoutDashboard, BarChart3, Copy, Check } from 'lucide-react';
+import { Upload, FileSpreadsheet, Calculator, Download, AlertCircle, Settings2, ChevronDown, ChevronUp, Link as LinkIcon, X, LayoutDashboard, BarChart3, Copy, Check, Languages } from 'lucide-react';
 import { toBlob } from 'html-to-image';
 
 interface Spec {
@@ -70,6 +70,129 @@ export default function App() {
   const [otherDays, setOtherDays] = useState(30);
   const [isCopying, setIsCopying] = useState(false);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [lang, setLang] = useState<'en' | 'zh'>('en');
+
+  const t = {
+    en: {
+      title: 'MRI Raw material management',
+      subtitle: '原料管理',
+      settings: 'Settings',
+      summary: 'Summary',
+      detailedSummary: 'Detailed Summary',
+      exportCsv: 'Export CSV',
+      allCategories: 'All Categories',
+      fetching: 'Fetching data and calculating consumption...',
+      waitMessage: 'This may take a few seconds depending on the sheet size.',
+      warehouseInv: 'Warehouse Inventory',
+      sectionInv: 'Section Inventory',
+      totalInv: 'Total Inventory',
+      invDays: 'Inv. Days',
+      usage: 'Usage',
+      materialCode: 'Material Code',
+      materialName: 'Material Name',
+      country: 'Country',
+      category: 'Category',
+      originSummary: 'Detailed Origin Summary (Imported vs Local)',
+      imported: 'Imported',
+      local: 'Local',
+      total: 'Total',
+      days: 'Days',
+      india: 'India',
+      others: 'Others',
+      config: 'Configuration',
+      googleSheets: 'Google Sheets URLs',
+      inventoryDays: 'Inventory Days Calculation',
+      save: 'Save Configuration',
+      close: 'Close',
+      matUsage: 'Material Usage (kg)',
+      groupTotalInv: 'Group Total Inv.',
+      stdInv: 'Std. Inv.',
+      status: 'Status',
+      surplus: 'Surplus',
+      shortage: 'Shortage',
+      ok: 'OK',
+      unknown: 'Unknown',
+      uncategorized: 'Uncategorized',
+      infoConsolidation: 'Information consolidation',
+      whRawMaterialSummary: 'WH Raw Material Daily Usage/Inventory Days Summary',
+      rawMaterialCat: 'Raw material category name',
+      whInventoryTons: 'WH inventory (tons)',
+      dailyUsageTons: 'Daily usage (tons)',
+      usageRatio: 'Usage ratio',
+      avgInvDays: 'Current average inventory days',
+      copyAsImage: 'Copy as Image',
+      copying: 'Copying...',
+      stdInvSettings: 'Standard Inventory Settings',
+      indiaDays: 'INDIA (Days)',
+      otherDays: 'OTHER (Days)',
+      matUsageInventory: 'Raw Material Usage & Inventory Level Summary',
+      stdInventoryTons: 'Standard inventory (tons)',
+      inventoryLevelRate: 'Inventory level rate',
+      warehouse: 'Warehouse',
+      section: 'Section',
+      inv: 'Inv.'
+    },
+    zh: {
+      title: 'MRI 原料管理',
+      subtitle: '原料管理',
+      settings: '設置',
+      summary: '摘要',
+      detailedSummary: '詳細摘要',
+      exportCsv: '導出 CSV',
+      allCategories: '所有類別',
+      fetching: '正在獲取數據並計算消耗...',
+      waitMessage: '這可能需要幾秒鐘，具體取決於表格大小。',
+      warehouseInv: '倉庫庫存',
+      sectionInv: '部門庫存',
+      totalInv: '總庫存',
+      invDays: '庫存天數',
+      usage: '用量',
+      materialCode: '物料代碼',
+      materialName: '物料名稱',
+      country: '國家',
+      category: '類別',
+      originSummary: '詳細來源摘要 (進口 vs 本地)',
+      imported: '進口',
+      local: '本地',
+      total: '總計',
+      days: '天',
+      india: '印度',
+      others: '其他',
+      config: '配置',
+      googleSheets: 'Google 表格 URL',
+      inventoryDays: '庫存天數計算',
+      save: '保存配置',
+      close: '關閉',
+      matUsage: '物料用量 (kg)',
+      groupTotalInv: '分組總庫存',
+      stdInv: '標準庫存',
+      status: '狀態',
+      surplus: '盈餘',
+      shortage: '短缺',
+      ok: '正常',
+      unknown: '未知',
+      uncategorized: '未分類',
+      infoConsolidation: '信息整合',
+      whRawMaterialSummary: '倉庫原材料每日用量/庫存天數摘要',
+      rawMaterialCat: '原材料類別名稱',
+      whInventoryTons: '倉庫庫存 (噸)',
+      dailyUsageTons: '每日用量 (噸)',
+      usageRatio: '用量比例',
+      avgInvDays: '當前平均庫存天數',
+      copyAsImage: '複製為圖片',
+      copying: '正在複製...',
+      stdInvSettings: '標準庫存設置',
+      indiaDays: '印度 (天)',
+      otherDays: '其他 (天)',
+      matUsageInventory: '原材料用量及庫存水平摘要',
+      stdInventoryTons: '標準庫存 (噸)',
+      inventoryLevelRate: '庫存水平率',
+      warehouse: '倉庫',
+      section: '部門',
+      inv: '庫存'
+    }
+  }[lang];
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -355,6 +478,12 @@ export default function App() {
           const dbInfo = database[materialCode] || { countryOfOrigin: '', category: 'Uncategorized', materialGroup: materialCode };
           const totalInventory = inv.warehouseInventory + inv.sectionInventory;
           
+          let category = dbInfo.category;
+          const normalizedCat = category.trim().toUpperCase();
+          if (normalizedCat === 'BEAD WIRE' || normalizedCat === 'PLY CORD') {
+            category = 'Bead wire & PLY CORD';
+          }
+
           // Skip if there's no usage AND no warehouse inventory
           if (totalKg === 0 && inv.warehouseInventory === 0) return null;
 
@@ -369,7 +498,7 @@ export default function App() {
             totalInventory,
             inventoryDays,
             countryOfOrigin: dbInfo.countryOfOrigin,
-            category: dbInfo.category,
+            category,
             materialGroup: dbInfo.materialGroup
           };
         })
@@ -498,52 +627,94 @@ export default function App() {
         <div className="flex flex-col items-center gap-6 mb-8">
           <header className="text-center space-y-2">
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-              MRI Raw material management 原料管理
+              {t.title} {t.subtitle}
             </h1>
           </header>
           <div className="flex flex-wrap justify-center gap-3">
             <button 
+              onClick={() => setLang(lang === 'en' ? 'zh' : 'en')}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 text-slate-600 transition-all hover:shadow-md"
+              title={lang === 'en' ? 'Switch to Chinese' : '切換至英文'}
+            >
+              <Languages className="w-5 h-5" />
+              <span className="hidden sm:inline text-sm font-medium">{lang === 'en' ? 'Chinese' : 'English'}</span>
+            </button>
+            <button 
               onClick={() => setShowSettings(true)}
               className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 text-slate-600 transition-all hover:shadow-md"
-              title="Settings"
+              title={t.settings}
             >
               <Settings2 className="w-5 h-5" />
-              <span className="hidden sm:inline text-sm font-medium">Settings</span>
+              <span className="hidden sm:inline text-sm font-medium">{t.settings}</span>
             </button>
             <button 
               onClick={() => setShowSummaryModal(true)}
               className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 text-indigo-600 transition-all hover:shadow-md"
-              title="Summary Dashboard"
+              title={t.summary}
             >
               <LayoutDashboard className="w-5 h-5" />
-              <span className="hidden sm:inline text-sm font-medium">Summary</span>
+              <span className="hidden sm:inline text-sm font-medium">{t.summary}</span>
             </button>
             <button 
               onClick={() => setShowDetailedSummaryModal(true)}
               className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 text-emerald-600 transition-all hover:shadow-md"
-              title="Detailed Origin Summary"
+              title={t.detailedSummary}
             >
               <BarChart3 className="w-5 h-5" />
-              <span className="hidden sm:inline text-sm font-medium">Detailed Summary</span>
+              <span className="hidden sm:inline text-sm font-medium">{t.detailedSummary}</span>
             </button>
             {Object.keys(categorizedResults).length > 0 && (
               <button
                 onClick={exportToCSV}
                 className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 text-amber-600 transition-all hover:shadow-md"
-                title="Export All to CSV"
+                title={t.exportCsv}
               >
                 <Download className="w-5 h-5" />
-                <span className="hidden sm:inline text-sm font-medium">Export CSV</span>
+                <span className="hidden sm:inline text-sm font-medium">{t.exportCsv}</span>
               </button>
             )}
           </div>
+
+          {/* Category Filter Buttons - Scrollable Single Line */}
+          {Object.keys(categorizedResults).length > 0 && (
+            <div className="w-full max-w-5xl overflow-x-auto pb-2 scrollbar-hide">
+              <div className="flex flex-nowrap justify-center gap-2 min-w-max px-4">
+                <button 
+                  onClick={() => setSelectedCategory(null)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${!selectedCategory ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+                >
+                  {t.allCategories}
+                </button>
+                {Object.keys(categorizedResults).sort().map(cat => {
+                  const getShortName = (name: string) => {
+                    if (name === 'Bead wire & PLY CORD') return 'Bead & PLY';
+                    if (name === 'Natural Rubber') return 'NR';
+                    if (name === 'Synthetic Rubber') return 'SR';
+                    if (name === 'Carbon Black') return 'CB';
+                    if (name === 'Chemical') return 'Chem';
+                    if (name === 'Process Oil') return 'Oil';
+                    return name;
+                  };
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${selectedCategory === cat ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+                    >
+                      {getShortName(cat)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {showDetailedSummaryModal && (
           <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-7xl max-h-[90vh] overflow-hidden flex flex-col">
               <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                <h3 className="text-lg font-semibold text-slate-900">Detailed Origin Summary (Imported vs Local)</h3>
+                <h3 className="text-lg font-semibold text-slate-900">{t.originSummary}</h3>
                 <button onClick={() => setShowDetailedSummaryModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
                   <X className="w-5 h-5" />
                 </button>
@@ -608,21 +779,21 @@ export default function App() {
                       <div className="space-y-6 p-4">
                         <div className="bg-[#fff2cc] p-4 rounded-t-xl border-x border-t border-slate-300 flex justify-between items-center">
                           <span className="text-xl font-bold">{today}</span>
-                          <h2 className="text-2xl font-bold text-center flex-1">原管倉庫 原材料種類_水位_存放率_庫存天數_使用量 彙整</h2>
+                          <h2 className="text-2xl font-bold text-center flex-1">{t.whRawMaterialSummary}</h2>
                         </div>
                         <div className="overflow-hidden border border-slate-300 rounded-b-xl">
                           <table className="w-full text-[13px] text-left border-collapse bg-white">
                             <thead>
                               <tr className="bg-[#a9d18e] border-b border-slate-300 text-slate-900 font-bold">
-                                <th className="px-2 py-3 border-r border-slate-300 text-center">原材料類別名稱</th>
-                                <th className="px-2 py-3 border-r border-slate-300 text-center">原管總庫存(噸)</th>
-                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#ffd966]">進口 / 在地</th>
-                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#ffd966]">原材料庫存占比</th>
-                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#ffd966]">原管庫存(噸)</th>
-                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#00b0f0] text-white">原材料庫存水位設定(噸)</th>
-                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#00b0f0] text-white">原材料庫存水位存放率</th>
-                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#92d050]">每天平均使用量(噸)</th>
-                                <th className="px-2 py-3 text-center bg-[#ffcc00]">現狀平均庫存天數</th>
+                                <th className="px-2 py-3 border-r border-slate-300 text-center">{t.rawMaterialCat}</th>
+                                <th className="px-2 py-3 border-r border-slate-300 text-center">{t.whInventoryTons}</th>
+                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#ffd966]">{t.origin}</th>
+                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#ffd966]">{t.usageRatio}</th>
+                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#ffd966]">{t.whInventoryTons}</th>
+                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#00b0f0] text-white">{t.stdInventoryTons}</th>
+                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#00b0f0] text-white">{t.inventoryLevelRate}</th>
+                                <th className="px-2 py-3 border-r border-slate-300 text-center bg-[#92d050]">{t.dailyUsageTons}</th>
+                                <th className="px-2 py-3 text-center bg-[#ffcc00]">{t.avgInvDays}</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-300">
@@ -635,7 +806,7 @@ export default function App() {
                                     <tr className="border-b border-slate-300">
                                       <td rowSpan={2} className="px-2 py-4 border-r border-slate-300 text-center font-bold text-slate-900">{cat}</td>
                                       <td rowSpan={2} className="px-2 py-4 border-r border-slate-300 text-center font-bold text-3xl bg-[#f2f2f2]">{(data.totalInv / 1000).toFixed(0)}</td>
-                                      <td className="px-2 py-2 border-r border-slate-300 text-center text-xs">進口原料<br/><span className="italic">Imported materials</span></td>
+                                      <td className="px-2 py-2 border-r border-slate-300 text-center text-xs">{t.imported}<br/><span className="italic">Imported materials</span></td>
                                       <td className="px-2 py-2 border-r border-slate-300 text-center font-bold">{(grandTotalInv > 0 ? (data.imported.inv / grandTotalInv) * 100 : 0).toFixed(1)}%</td>
                                       <td className="px-2 py-2 border-r border-slate-300 text-center font-bold">{(data.imported.inv / 1000).toFixed(0)}</td>
                                       <td className="px-2 py-2 border-r border-slate-300 text-center font-bold">{(data.imported.setting / 1000).toFixed(0)}</td>
@@ -644,7 +815,7 @@ export default function App() {
                                       <td rowSpan={2} className="px-2 py-4 text-center font-bold text-4xl bg-[#fff2cc]">{catInvDays.toFixed(0)}</td>
                                     </tr>
                                     <tr className="border-b border-slate-300">
-                                      <td className="px-2 py-2 border-r border-slate-300 text-center text-xs">在地原料<br/><span className="italic">Local materials</span></td>
+                                      <td className="px-2 py-2 border-r border-slate-300 text-center text-xs">{t.local}<br/><span className="italic">Local materials</span></td>
                                       <td className="px-2 py-2 border-r border-slate-300 text-center font-bold">{(grandTotalInv > 0 ? (data.local.inv / grandTotalInv) * 100 : 0).toFixed(1)}%</td>
                                       <td className="px-2 py-2 border-r border-slate-300 text-center font-bold">{(data.local.inv / 1000).toFixed(0)}</td>
                                       <td className="px-2 py-2 border-r border-slate-300 text-center font-bold">{(data.local.setting / 1000).toFixed(0)}</td>
@@ -655,13 +826,13 @@ export default function App() {
                                 );
                               })}
                               <tr className="bg-[#a9d18e] text-slate-900 font-bold border-t-2 border-slate-400">
-                                <td className="px-2 py-4 border-r border-slate-300 text-center">原材料每日<br/>總使用量 (噸)</td>
+                                <td className="px-2 py-4 border-r border-slate-300 text-center">{t.dailyUsageTons}</td>
                                 <td className="px-2 py-4 border-r border-slate-300 text-center text-3xl">{(grandTotalUsage / 1000).toFixed(1)}</td>
-                                <td className="px-2 py-4 border-r border-slate-300 text-center bg-[#ffd966]">原材料庫存<br/>總量 (噸)</td>
+                                <td className="px-2 py-4 border-r border-slate-300 text-center bg-[#ffd966]">{t.whInventoryTons}</td>
                                 <td className="px-2 py-4 border-r border-slate-300 text-center text-3xl bg-[#f2f2f2]">{ (grandTotalInv / 1000).toFixed(0) }</td>
-                                <td className="px-2 py-4 border-r border-slate-300 text-center bg-[#00b0f0] text-white">原材料水位<br/>設定(噸)</td>
+                                <td className="px-2 py-4 border-r border-slate-300 text-center bg-[#00b0f0] text-white">{t.stdInventoryTons}</td>
                                 <td className="px-2 py-4 border-r border-slate-300 text-center text-3xl bg-[#f2f2f2]">{(grandTotalSetting / 1000).toFixed(0)}</td>
-                                <td className="px-2 py-4 border-r border-slate-300 text-center bg-[#92d050]">原材料庫存天數</td>
+                                <td className="px-2 py-4 border-r border-slate-300 text-center bg-[#92d050]">{t.invDays}</td>
                                 <td colSpan={2} className="px-2 py-4 text-center text-4xl bg-[#f2f2f2]">{grandTotalUsage > 0 ? (grandTotalInv / grandTotalUsage).toFixed(0) : 0}</td>
                               </tr>
                             </tbody>
@@ -672,12 +843,12 @@ export default function App() {
                           <table className="w-full text-2xl text-left border-collapse bg-white">
                             <tbody className="divide-y divide-slate-300">
                               <tr>
-                                <td className="px-6 py-4 font-bold text-slate-900 border-r border-slate-300">Imported materials 進口原材料(噸)</td>
+                                <td className="px-6 py-4 font-bold text-slate-900 border-r border-slate-300">{t.imported} (tons)</td>
                                 <td className="px-6 py-4 text-center font-bold border-r border-slate-300">{(totalImportedInv / 1000).toFixed(0)}</td>
                                 <td className="px-6 py-4 text-center font-bold text-slate-900">{(grandTotalInv > 0 ? (totalImportedInv / grandTotalInv) * 100 : 0).toFixed(1)}%</td>
                               </tr>
                               <tr>
-                                <td className="px-6 py-4 font-bold text-slate-900 border-r border-slate-300">Local materials 在地原材料(噸)</td>
+                                <td className="px-6 py-4 font-bold text-slate-900 border-r border-slate-300">{t.local} (tons)</td>
                                 <td className="px-6 py-4 text-center font-bold border-r border-slate-300">{(totalLocalInv / 1000).toFixed(0)}</td>
                                 <td className="px-6 py-4 text-center font-bold text-slate-900">{(grandTotalInv > 0 ? (totalLocalInv / grandTotalInv) * 100 : 0).toFixed(1)}%</td>
                               </tr>
@@ -713,7 +884,7 @@ export default function App() {
           <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
               <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                <h3 className="text-lg font-semibold text-slate-900">Inventory & Usage Summary</h3>
+                <h3 className="text-lg font-semibold text-slate-900">{t.summary}</h3>
                 <button onClick={() => setShowSummaryModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
                   <X className="w-5 h-5" />
                 </button>
@@ -754,18 +925,17 @@ export default function App() {
 
                     return (
                       <>
-                        {/* Table 1 */}
                         <div className="space-y-4">
-                          <h4 className="text-sm font-bold uppercase tracking-wider text-slate-500">WH Raw Material Inventory Summary</h4>
+                          <h4 className="text-sm font-bold uppercase tracking-wider text-slate-500">{t.matUsageInventory}</h4>
                           <div className="overflow-hidden border border-slate-300 rounded-xl shadow-sm">
                             <table className="w-full text-sm text-left border-collapse">
                               <thead>
                                 <tr className="bg-[#f8fafc] border-b border-slate-300">
-                                  <th className="px-4 py-3 font-bold text-slate-700 bg-slate-100 border-r border-slate-300">Raw material category name</th>
-                                  <th className="px-4 py-3 font-bold text-slate-700 text-right border-r border-slate-300">WH inventory (tons)</th>
-                                  <th className="px-4 py-3 font-bold text-white text-right bg-[#00b0f0] border-r border-slate-300">Inventory setting (tons)</th>
-                                  <th className="px-4 py-3 font-bold text-slate-700 text-right bg-[#ffd966] border-r border-slate-300">Inventory ratio</th>
-                                  <th className="px-4 py-3 font-bold text-white text-right bg-[#00b0f0]">Inventory level rate</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 bg-slate-100 border-r border-slate-300">{t.rawMaterialCat}</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 text-right border-r border-slate-300">{t.whInventoryTons}</th>
+                                  <th className="px-4 py-3 font-bold text-white text-right bg-[#00b0f0] border-r border-slate-300">{t.stdInventoryTons}</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 text-right bg-[#ffd966] border-r border-slate-300">{t.usageRatio}</th>
+                                  <th className="px-4 py-3 font-bold text-white text-right bg-[#00b0f0]">{t.inventoryLevelRate}</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-200">
@@ -783,7 +953,7 @@ export default function App() {
                                   );
                                 })}
                                 <tr className="bg-[#22c55e] text-white font-bold text-lg">
-                                  <td className="px-4 py-4 border-r border-green-600">Information consolidation</td>
+                                  <td className="px-4 py-4 border-r border-green-600">{t.infoConsolidation}</td>
                                   <td className="px-4 py-4 text-right border-r border-green-600">{(totalWh / 1000).toFixed(0)}</td>
                                   <td className="px-4 py-4 text-right border-r border-green-600">{(totalSetting / 1000).toFixed(0)}</td>
                                   <td className="px-4 py-4 text-right border-r border-green-600">100%</td>
@@ -797,18 +967,18 @@ export default function App() {
                         {/* Table 2 */}
                         <div className="space-y-4">
                           <div className="flex justify-between items-end">
-                            <h4 className="text-sm font-bold uppercase tracking-wider text-slate-500">WH Raw Material Daily Usage/Inventory Days Summary</h4>
+                            <h4 className="text-sm font-bold uppercase tracking-wider text-slate-500">{t.whRawMaterialSummary}</h4>
                             <span className="text-xs font-mono text-slate-400">{new Date().toLocaleDateString()}</span>
                           </div>
                           <div className="overflow-hidden border border-slate-300 rounded-xl shadow-sm">
                             <table className="w-full text-sm text-left border-collapse">
                               <thead>
                                 <tr className="bg-[#f8fafc] border-b border-slate-300">
-                                  <th className="px-4 py-3 font-bold text-slate-700 bg-slate-100 border-r border-slate-300">Raw material category name</th>
-                                  <th className="px-4 py-3 font-bold text-slate-700 text-right border-r border-slate-300">WH inventory (tons)</th>
-                                  <th className="px-4 py-3 font-bold text-slate-700 text-right bg-[#92d050] border-r border-slate-300">Daily usage (tons)</th>
-                                  <th className="px-4 py-3 font-bold text-slate-700 text-right bg-[#ffd966] border-r border-slate-300">Usage ratio</th>
-                                  <th className="px-4 py-3 font-bold text-slate-900 text-right bg-[#ffcc00]">Current average inventory days</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 bg-slate-100 border-r border-slate-300">{t.rawMaterialCat}</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 text-right border-r border-slate-300">{t.whInventoryTons}</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 text-right bg-[#92d050] border-r border-slate-300">{t.dailyUsageTons}</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 text-right bg-[#ffd966] border-r border-slate-300">{t.usageRatio}</th>
+                                  <th className="px-4 py-3 font-bold text-slate-900 text-right bg-[#ffcc00]">{t.avgInvDays}</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-200">
@@ -826,7 +996,7 @@ export default function App() {
                                   );
                                 })}
                                 <tr className="bg-[#22c55e] text-white font-bold text-lg">
-                                  <td className="px-4 py-4 border-r border-green-600">Information consolidation</td>
+                                  <td className="px-4 py-4 border-r border-green-600">{t.infoConsolidation}</td>
                                   <td className="px-4 py-4 text-right border-r border-green-600">{(totalWh / 1000).toFixed(0)}</td>
                                   <td className="px-4 py-4 text-right border-r border-green-600">{(totalUsage / 1000).toFixed(0)}</td>
                                   <td className="px-4 py-4 text-right border-r border-green-600">100%</td>
@@ -848,13 +1018,13 @@ export default function App() {
                   className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl font-medium hover:bg-emerald-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isCopying ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  {isCopying ? 'Copying...' : 'Copy as Image'}
+                  {isCopying ? t.copying : t.copyAsImage}
                 </button>
                 <button 
                   onClick={() => setShowSummaryModal(false)} 
                   className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors shadow-sm"
                 >
-                  Close
+                  {t.close}
                 </button>
               </div>
             </div>
@@ -865,14 +1035,14 @@ export default function App() {
           <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
               <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                <h3 className="text-lg font-semibold text-slate-900">Standard Inventory Settings</h3>
+                <h3 className="text-lg font-semibold text-slate-900">{t.stdInvSettings}</h3>
                 <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
               <div className="p-6 space-y-5">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">INDIA (Days)</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">{t.indiaDays}</label>
                   <input 
                     type="number" 
                     value={indiaDays} 
@@ -881,7 +1051,7 @@ export default function App() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Other Countries (Days)</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">{t.otherDays}</label>
                   <input 
                     type="number" 
                     value={otherDays} 
@@ -895,7 +1065,7 @@ export default function App() {
                   onClick={() => setShowSettings(false)} 
                   className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors shadow-sm"
                 >
-                  Done
+                  {t.close}
                 </button>
               </div>
             </div>
@@ -913,13 +1083,15 @@ export default function App() {
         {isCalculating && Object.keys(categorizedResults).length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl shadow-sm border border-slate-200">
             <div className="w-12 h-12 border-4 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin mb-4" />
-            <p className="text-slate-600 font-medium">Fetching data and calculating consumption...</p>
-            <p className="text-slate-400 text-sm mt-2">This may take a few seconds depending on the sheet size.</p>
+            <p className="text-slate-600 font-medium">{t.fetching}</p>
+            <p className="text-slate-400 text-sm mt-2">{t.waitMessage}</p>
           </div>
         )}
 
         {/* Results */}
-        {Object.entries(categorizedResults).map(([category, items]) => (
+        {Object.entries(categorizedResults)
+          .filter(([category]) => !selectedCategory || category === selectedCategory)
+          .map(([category, items]) => (
           <div key={category} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
               <h2 className="text-lg font-semibold text-slate-900">{category}</h2>
@@ -938,17 +1110,17 @@ export default function App() {
                 <table className="w-full text-sm text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-800 border-b border-slate-700">
-                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider">Material Code</th>
-                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider">Material Name</th>
-                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">Usage (kg)</th>
-                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">WH Inv.</th>
-                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">Sec. Inv.</th>
-                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">Total</th>
-                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">Days</th>
-                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right border-l border-slate-600">Grp Days</th>
-                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right border-l border-slate-600">Grp Inv.</th>
-                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">Std.</th>
-                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider">Origin</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider">{t.materialCode}</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider">{t.materialName}</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">{t.usage} (kg)</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">{t.warehouse} {t.inv}</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">{t.section} {t.inv}</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">{t.total} {t.inv}</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">{t.invDays}</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right border-l border-slate-600">{t.groupInvDays || 'Grp Days'}</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right border-l border-slate-600">{t.groupTotalInv}</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider text-right">{t.stdInv}</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider">{t.country || 'Origin'}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">

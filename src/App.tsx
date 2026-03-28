@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { Upload, FileSpreadsheet, Calculator, Download, AlertCircle, Settings2, ChevronDown, ChevronUp, Link as LinkIcon, X, LayoutDashboard, BarChart3, Copy, Check, Languages } from 'lucide-react';
+import { Upload, FileSpreadsheet, Calculator, Download, AlertCircle, Settings2, ChevronDown, ChevronUp, Link as LinkIcon, X, LayoutDashboard, BarChart3, Copy, Check, Languages, Search } from 'lucide-react';
 import { toBlob } from 'html-to-image';
 
 interface Spec {
@@ -22,6 +22,7 @@ interface ConsumptionResult {
   warehouseInventory: number;
   sectionInventory: number;
   totalInventory: number;
+  underQA: number;
   inventoryDays: number;
   countryOfOrigin: string;
   category: string;
@@ -34,6 +35,7 @@ interface ConsumptionResult {
 }
 
 interface DatabaseInfo {
+  materialName?: string;
   countryOfOrigin: string;
   category: string;
   materialGroup: string;
@@ -43,6 +45,7 @@ interface InventoryData {
   materialName: string;
   warehouseInventory: number;
   sectionInventory: number;
+  underQA: number;
 }
 
 const colToIndex = (col: string) => {
@@ -71,6 +74,8 @@ export default function App() {
   const [isCopying, setIsCopying] = useState(false);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedMaterialDetails, setSelectedMaterialDetails] = useState<ConsumptionResult | null>(null);
   const [lang, setLang] = useState<'en' | 'zh'>('en');
 
   const t = {
@@ -131,7 +136,9 @@ export default function App() {
       inventoryLevelRate: 'Inventory level rate',
       warehouse: 'Warehouse',
       section: 'Section',
-      inv: 'Inv.'
+      inv: 'Inv.',
+      materialDetails: 'Material Details',
+      materialGroup: 'Material Group'
     },
     zh: {
       title: 'MRI 原料管理',
@@ -190,7 +197,9 @@ export default function App() {
       inventoryLevelRate: '庫存水平率',
       warehouse: '倉庫',
       section: '部門',
-      inv: '庫存'
+      inv: '庫存',
+      materialDetails: '物料詳情',
+      materialGroup: '物料組'
     }
   }[lang];
 
@@ -357,21 +366,25 @@ export default function App() {
       const transit = parseFloat(row[6]) || 0;
       const quality = parseFloat(row[7]) || 0;
       
-      const totalQty = unrestricted + transit + quality;
-      
       if (!inventory[matCode]) {
         inventory[matCode] = {
           materialName: matName,
           warehouseInventory: 0,
-          sectionInventory: 0
+          sectionInventory: 0,
+          underQA: 0
         };
       }
       
+      // Unrestricted and Quality depend on storage location
+      const locationQty = unrestricted + quality;
       if (storageLocation === '1001') {
-        inventory[matCode].warehouseInventory += totalQty;
+        inventory[matCode].warehouseInventory += locationQty;
       } else {
-        inventory[matCode].sectionInventory += totalQty;
+        inventory[matCode].sectionInventory += locationQty;
       }
+      
+      // Track QA testing data separately (Column H)
+      inventory[matCode].underQA += quality;
       
       // Update name if it was empty before
       if (!inventory[matCode].materialName && matName) {
@@ -391,6 +404,7 @@ export default function App() {
       if (!matCode) continue;
       
       db[matCode] = {
+        materialName: String(row[1] || '').trim(),
         countryOfOrigin: String(row[2] || '').trim(),
         category: String(row[3] || '').trim() || 'Uncategorized',
         materialGroup: String(row[4] || '').trim() || matCode
@@ -456,7 +470,17 @@ export default function App() {
       
       for (const plan of planned) {
         const baseCode = plan.rubberName.substring(0, 4);
-        const matchingSpecs = specs.filter(s => s.baseCode === baseCode);
+        
+        const matchingSpecs = specs.filter(s => {
+          const isPlanExact = plan.rubberName === '0751NPT' || plan.rubberName === '7331NPT';
+          const isSpecExact = s.rubberName === '0751NPT' || s.rubberName === '7331NPT';
+          
+          if (isPlanExact || isSpecExact) {
+            return s.rubberName === plan.rubberName;
+          }
+          
+          return s.baseCode === baseCode;
+        });
         
         for (const spec of matchingSpecs) {
           for (const [matCode, usage] of Object.entries(spec.materials)) {
@@ -474,7 +498,7 @@ export default function App() {
       let rawResults: ConsumptionResult[] = Array.from(allMaterialCodes)
         .map(materialCode => {
           const totalKg = consumption[materialCode] || 0;
-          const inv = inventory[materialCode] || { materialName: 'Unknown', warehouseInventory: 0, sectionInventory: 0 };
+          const inv = inventory[materialCode] || { materialName: 'Unknown', warehouseInventory: 0, sectionInventory: 0, underQA: 0 };
           const dbInfo = database[materialCode] || { countryOfOrigin: '', category: 'Uncategorized', materialGroup: materialCode };
           const totalInventory = inv.warehouseInventory + inv.sectionInventory;
           
@@ -487,6 +511,23 @@ export default function App() {
           // Skip if there's no usage AND no warehouse inventory
           if (totalKg === 0 && inv.warehouseInventory === 0) return null;
 
+          // Skip if material starts with "DF" and has no material name in the database sheet
+          if (materialCode.startsWith('DF') && (!database[materialCode] || !database[materialCode].materialName)) {
+            return null;
+          }
+
+          // Skip specific uncategorized items that are not actual usage materials
+          if (category === 'Uncategorized') {
+            const searchStr = `${inv.materialName} ${materialCode}`.toUpperCase();
+            if (
+              searchStr.includes('RUBBER COMPOUND') || 
+              searchStr.includes('SAP CODE') || 
+              searchStr.includes('RECYCLE RUBBER')
+            ) {
+              return null;
+            }
+          }
+
           const inventoryDays = totalKg > 0 ? totalInventory / totalKg : 0;
           
           return {
@@ -496,6 +537,7 @@ export default function App() {
             warehouseInventory: inv.warehouseInventory,
             sectionInventory: inv.sectionInventory,
             totalInventory,
+            underQA: inv.underQA || 0,
             inventoryDays,
             countryOfOrigin: dbInfo.countryOfOrigin,
             category,
@@ -674,40 +716,6 @@ export default function App() {
               </button>
             )}
           </div>
-
-          {/* Category Filter Buttons - Scrollable Single Line */}
-          {Object.keys(categorizedResults).length > 0 && (
-            <div className="w-full max-w-5xl overflow-x-auto pb-2 scrollbar-hide">
-              <div className="flex flex-nowrap justify-center gap-2 min-w-max px-4">
-                <button 
-                  onClick={() => setSelectedCategory(null)}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${!selectedCategory ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
-                >
-                  {t.allCategories}
-                </button>
-                {Object.keys(categorizedResults).sort().map(cat => {
-                  const getShortName = (name: string) => {
-                    if (name === 'Bead wire & PLY CORD') return 'Bead & PLY';
-                    if (name === 'Natural Rubber') return 'NR';
-                    if (name === 'Synthetic Rubber') return 'SR';
-                    if (name === 'Carbon Black') return 'CB';
-                    if (name === 'Chemical') return 'Chem';
-                    if (name === 'Process Oil') return 'Oil';
-                    return name;
-                  };
-                  return (
-                    <button
-                      key={cat}
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${selectedCategory === cat ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
-                    >
-                      {getShortName(cat)}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </div>
 
         {showDetailedSummaryModal && (
@@ -1088,16 +1096,94 @@ export default function App() {
           </div>
         )}
 
-        {/* Results */}
+        {/* Filters and Search */}
+        {Object.keys(categorizedResults).length > 0 && (
+          <div className="mb-6 flex flex-col sm:flex-row items-center justify-center gap-4">
+            {/* Category Filter Dropdown */}
+            <div className="w-full sm:w-64">
+              <div className="relative">
+                <select
+                  value={selectedCategory || ''}
+                  onChange={(e) => setSelectedCategory(e.target.value || null)}
+                  className="w-full appearance-none bg-white border border-slate-200 text-slate-700 py-2.5 px-4 pr-10 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-sm"
+                >
+                  <option value="">{t.allCategories}</option>
+                  {Object.keys(categorizedResults).sort().map(cat => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
+                  <ChevronDown className="h-4 w-4" />
+                </div>
+              </div>
+            </div>
+
+            {/* Search Bar */}
+            <div className="w-full sm:w-64 bg-white px-4 py-2.5 rounded-xl shadow-sm border border-slate-200 flex items-center gap-3">
+              <Search className="w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search material..."
+                className="flex-1 bg-transparent border-none focus:ring-0 text-slate-900 placeholder:text-slate-400 outline-none text-sm"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+        )}
+
         {Object.entries(categorizedResults)
           .filter(([category]) => !selectedCategory || category === selectedCategory)
-          .map(([category, items]) => (
+          .map(([category, items]) => {
+            const catItems = (items as ConsumptionResult[]).filter(item => 
+              item.materialCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+              item.materialName.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+
+            if (catItems.length === 0) return null;
+
+            const totalInv = catItems.reduce((sum, item) => sum + item.totalInventory, 0);
+            const totalWarehouseInv = catItems.reduce((sum, item) => sum + item.warehouseInventory, 0);
+            const totalSectionInv = catItems.reduce((sum, item) => sum + item.sectionInventory, 0);
+            const totalUsage = catItems.reduce((sum, item) => sum + item.totalKg, 0);
+            const avgInvDays = totalUsage > 0 ? totalInv / totalUsage : 0;
+            const stdInv = catItems.reduce((sum, item) => sum + (item.totalKg * (item.countryOfOrigin.toUpperCase() === 'INDIA' ? indiaDays : otherDays)), 0);
+
+            return (
           <div key={category} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
-              <h2 className="text-lg font-semibold text-slate-900">{category}</h2>
+            <div className="px-6 py-5 border-b border-slate-200 flex flex-col xl:flex-row xl:items-center justify-between bg-slate-50/50 gap-4">
+              <h2 className="text-lg font-semibold text-slate-900 min-w-[200px]">{category}</h2>
+              <div className="flex flex-wrap gap-6 text-sm bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm xl:ml-auto">
+                <div className="flex flex-col">
+                  <span className="text-slate-500 text-xs font-medium uppercase tracking-wider">Total Inv</span>
+                  <span className="font-semibold text-slate-900 font-mono">{totalInv.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-slate-500 text-xs font-medium uppercase tracking-wider">Warehouse Inv</span>
+                  <span className="font-semibold text-slate-900 font-mono">{totalWarehouseInv.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-slate-500 text-xs font-medium uppercase tracking-wider">Section Inv</span>
+                  <span className="font-semibold text-slate-900 font-mono">{totalSectionInv.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-slate-500 text-xs font-medium uppercase tracking-wider">Total Usage</span>
+                  <span className="font-semibold text-slate-900 font-mono">{totalUsage.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-slate-500 text-xs font-medium uppercase tracking-wider">Avg Inv Days</span>
+                  <span className="font-semibold text-slate-900 font-mono">{avgInvDays.toLocaleString(undefined, { maximumFractionDigits: 1 })}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-slate-500 text-xs font-medium uppercase tracking-wider">Std Inv</span>
+                  <span className="font-semibold text-slate-900 font-mono">{stdInv.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                </div>
+              </div>
             </div>
             
-            <div className="overflow-x-auto border-t border-slate-100 flex flex-col items-center">
+            <div className="overflow-x-auto overflow-y-auto max-h-[500px] border-t border-slate-100 flex flex-col items-center">
               <div 
                 className="origin-top transition-transform"
                 style={{
@@ -1108,7 +1194,7 @@ export default function App() {
                 }}
               >
                 <table className="w-full text-sm text-left border-collapse">
-                  <thead>
+                  <thead className="sticky top-0 z-10">
                     <tr className="bg-slate-800 border-b border-slate-700">
                       <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider">{t.materialCode}</th>
                       <th className="px-6 py-3 text-xs font-semibold text-slate-200 uppercase tracking-wider">{t.materialName}</th>
@@ -1124,12 +1210,17 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {(items as ConsumptionResult[]).map((result, idx) => {
+                    {catItems.map((result, idx) => {
                       const stdDays = result.countryOfOrigin.toUpperCase() === 'INDIA' ? indiaDays : otherDays;
                       const standardInventory = result.totalKg * stdDays;
                       
                       return (
-                      <tr key={idx} className="hover:bg-indigo-50/50 transition-colors even:bg-slate-50">
+                      <tr 
+                        key={idx} 
+                        className="hover:bg-indigo-50/50 transition-colors even:bg-slate-50 cursor-pointer"
+                        onDoubleClick={() => setSelectedMaterialDetails(result)}
+                        title="Double click to view details"
+                      >
                         <td className="px-6 py-4 text-sm font-medium text-slate-900 font-mono">
                           {result.materialCode}
                         </td>
@@ -1179,7 +1270,91 @@ export default function App() {
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
+
+        {selectedMaterialDetails && (
+          <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col">
+              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 className="text-lg font-semibold text-slate-900">{t.materialDetails}</h3>
+                <button onClick={() => setSelectedMaterialDetails(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 overflow-y-auto max-h-[70vh]">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-slate-500">{t.materialCode}</p>
+                    <p className="text-base font-semibold text-slate-900 font-mono">{selectedMaterialDetails.materialCode}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-slate-500">{t.materialName}</p>
+                    <p className="text-base font-semibold text-slate-900">{selectedMaterialDetails.materialName}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-slate-500">{t.category}</p>
+                    <p className="text-base font-semibold text-slate-900">{selectedMaterialDetails.category}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-slate-500">{t.materialGroup}</p>
+                    <p className="text-base font-semibold text-slate-900">{selectedMaterialDetails.materialGroup}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-slate-500">{t.country}</p>
+                    <p className="text-base font-semibold text-slate-900">{selectedMaterialDetails.countryOfOrigin || t.unknown}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-slate-500">{t.usage} (kg)</p>
+                    <p className="text-base font-semibold text-slate-900 font-mono">{selectedMaterialDetails.totalKg.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-slate-500">{t.warehouseInv}</p>
+                    <p className="text-base font-semibold text-slate-900 font-mono">{selectedMaterialDetails.warehouseInventory.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-slate-500">{t.sectionInv}</p>
+                    <p className="text-base font-semibold text-slate-900 font-mono">{selectedMaterialDetails.sectionInventory.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-slate-500">{t.totalInv}</p>
+                    <p className="text-base font-semibold text-slate-900 font-mono">{selectedMaterialDetails.totalInventory.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+                  </div>
+                  {selectedMaterialDetails.underQA > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-amber-600">Under QA Testing</p>
+                      <p className="text-base font-semibold text-amber-700 font-mono">{selectedMaterialDetails.underQA.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-slate-500">{t.invDays}</p>
+                    <p className="text-base font-semibold text-slate-900 font-mono">{selectedMaterialDetails.totalKg > 0 ? selectedMaterialDetails.inventoryDays.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '-'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-slate-500">{t.stdInv}</p>
+                    <p className="text-base font-semibold text-slate-900 font-mono">{(selectedMaterialDetails.totalKg * (selectedMaterialDetails.countryOfOrigin.toUpperCase() === 'INDIA' ? indiaDays : otherDays)).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-slate-500">{t.groupTotalInv}</p>
+                    <p className="text-base font-semibold text-slate-900 font-mono">{selectedMaterialDetails.groupTotalInventory?.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) || '-'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-slate-500">{t.groupInvDays || 'Grp Days'}</p>
+                    <p className="text-base font-semibold text-slate-900 font-mono">{selectedMaterialDetails.groupTotalUsage! > 0 ? selectedMaterialDetails.groupTotalInvDays?.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '-'}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                <button
+                  onClick={() => setSelectedMaterialDetails(null)}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors font-medium"
+                >
+                  {t.close}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

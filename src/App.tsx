@@ -27,6 +27,8 @@ interface ConsumptionResult {
   countryOfOrigin: string;
   category: string;
   materialGroup: string;
+  usedRubbers: { rubberName: string; kg: number }[];
+  batches: BatchInfo[];
   groupTotalInvDays?: number;
   groupTotalUsage?: number;
   groupTotalInventory?: number;
@@ -41,12 +43,71 @@ interface DatabaseInfo {
   materialGroup: string;
 }
 
+interface BatchInfo {
+  batchNumber: string;
+  expiryDateStr: string;
+  quantity: number;
+}
+
 interface InventoryData {
   materialName: string;
   warehouseInventory: number;
   sectionInventory: number;
   underQA: number;
+  batches: BatchInfo[];
 }
+
+const parseExpiryDate = (dateStr: string): Date | null => {
+  if (!dateStr) return null;
+  
+  // Check if dateStr is an Excel serial number
+  if (/^\d{4,5}(\.\d+)?$/.test(dateStr)) {
+    const serialNum = parseFloat(dateStr);
+    const unixDays = Math.floor(serialNum) - 25569;
+    const d = new Date(unixDays * 86400 * 1000);
+    d.setMinutes(d.getMinutes() + d.getTimezoneOffset());
+    return d;
+  }
+
+  // Custom fallback to prevent wrong mm/dd parsing
+  const parts = dateStr.split(/[\.\-\/]/);
+  if (parts.length === 3) {
+    const p0 = parseInt(parts[0], 10);
+    const p1 = parseInt(parts[1], 10);
+    const p2 = parseInt(parts[2], 10);
+    
+    // Format: dd-mm-yyyy or mm-dd-yyyy
+    if (p2 > 1000) {
+      if (p1 <= 12 && p0 > 12) {
+        return new Date(p2, p1 - 1, p0); // dd-mm-yyyy
+      } else if (p0 <= 12 && p1 > 12) {
+        return new Date(p2, p0 - 1, p1); // mm-dd-yyyy
+      } else {
+        // default to dd-mm-yyyy if ambiguous
+        return new Date(p2, p1 - 1, p0);
+      }
+    } 
+    // Format: yyyy-mm-dd
+    else if (p0 > 1000) { 
+      return new Date(p0, p1 - 1, p2); 
+    }
+  }
+  
+  // Standard JS Date parsing as last resort
+  let d = new Date(dateStr);
+  if (!isNaN(d.getTime())) return d;
+  
+  return null;
+};
+
+const formatExpiryDateStr = (dateStr: string): string => {
+  const d = parseExpiryDate(dateStr);
+  if (!d) return dateStr;
+  const day = d.getDate().toString().padStart(2, '0');
+  const month = (d.getMonth() + 1).toString().padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}-${month}-${year}`;
+};
 
 const colToIndex = (col: string) => {
   let index = 0;
@@ -62,6 +123,7 @@ export default function App() {
   const prodUrl = 'https://docs.google.com/spreadsheets/d/1m79DT6yZNg_qJLzMikzVXIV84pFRq6NkItMDA-Wd6P8/edit?gid=1995297640#gid=1995297640';
   const inventoryUrl = 'https://docs.google.com/spreadsheets/d/1gQN98nrZx0HYfqXE35_HVjxMy0Y7XVXD/edit?gid=1963391384#gid=1963391384';
   const databaseUrl = 'https://docs.google.com/spreadsheets/d/1gQN98nrZx0HYfqXE35_HVjxMy0Y7XVXD/edit?gid=1369074018#gid=1369074018';
+  const sapDataUrl = 'https://docs.google.com/spreadsheets/d/1gQN98nrZx0HYfqXE35_HVjxMy0Y7XVXD/edit?gid=1029866475#gid=1029866475';
   
   const [categorizedResults, setCategorizedResults] = useState<Record<string, ConsumptionResult[]>>({});
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +138,8 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMaterialDetails, setSelectedMaterialDetails] = useState<ConsumptionResult | null>(null);
+  const [detailsViewMode, setDetailsViewMode] = useState<'simple' | 'sap'>('simple');
+  const materialDetailsRef = useRef<HTMLDivElement>(null);
   const [lang, setLang] = useState<'en' | 'zh'>('en');
 
   const t = {
@@ -221,20 +285,29 @@ export default function App() {
     
     setIsCopying(true);
     try {
-      // Create a temporary clone for capture to ensure it's always desktop-sized
-      const blob = await toBlob(ref.current, {
+      const el = ref.current;
+      const width = el.scrollWidth;
+      const height = el.scrollHeight;
+
+      // Reset zoom temporarily to get accurate dimensions and image
+      const originalZoom = el.style.zoom;
+      el.style.zoom = '1';
+
+      const blob = await toBlob(el, {
         backgroundColor: '#ffffff',
-        pixelRatio: 3,
-        width: 1400,
+        pixelRatio: 2, // slightly lowered to prevent huge blob size bugs on mobile
+        width: width,
+        height: height,
         style: {
           margin: '0',
-          padding: '40px',
           transform: 'none',
-          width: '1400px',
           display: 'block',
-          zoom: '1'
+          width: `${width}px`,
+          height: `${height}px`
         }
       });
+      
+      el.style.zoom = originalZoom;
       
       if (blob) {
         await navigator.clipboard.write([
@@ -281,13 +354,19 @@ export default function App() {
         throw new Error(`Failed to fetch sheet from Google. Status: ${response.status}`);
       }
       const text = await response.text();
-      const workbook = XLSX.read(text, { type: 'string' });
+      const workbook = XLSX.read(text, { type: 'string', raw: true });
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
-      return XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
+      return XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, raw: true });
     } catch (err: any) {
       throw new Error(`Error fetching Google Sheet: ${err.message}`);
     }
+  };
+
+  const parseNum = (val: any): number => {
+    if (typeof val === 'number') return val;
+    const str = String(val || '').replace(/[^0-9.-]/g, '');
+    return parseFloat(str) || 0;
   };
 
   const parseSpec = (data: any[][], parsedConfig: any): Spec[] => {
@@ -304,14 +383,14 @@ export default function App() {
       const vMark = String(row[parsedConfig.vCol] || '').trim().toUpperCase();
       if (vMark === 'V' || vMark === 'Ⅴ') {
         const rubberName = String(row[parsedConfig.rubberCol] || '').trim();
-        const ratio = parseFloat(row[parsedConfig.ratioCol]);
+        const ratio = parseNum(row[parsedConfig.ratioCol]);
         
-        if (rubberName && !isNaN(ratio)) {
+        if (rubberName && ratio > 0) {
           const baseCode = rubberName.substring(0, 4);
           const materials: Record<string, number> = {};
           
           for (let j = parsedConfig.matStartCol; j < row.length; j++) {
-            const val = parseFloat(row[j]);
+            const val = parseNum(row[j]);
             if (!isNaN(val) && val > 0) {
               const matCode = String(materialCodes[j - parsedConfig.matStartCol] || '').trim();
               if (matCode) {
@@ -336,7 +415,7 @@ export default function App() {
       if (!row) continue;
       
       const rubberName = String(row[parsedConfig.prodRubberCol] || '').trim();
-      const batches = parseFloat(row[parsedConfig.prodBatchCol]);
+      const batches = parseNum(row[parsedConfig.prodBatchCol]);
       
       if (rubberName && !isNaN(batches) && batches > 0) {
         if (!seen.has(rubberName)) {
@@ -362,21 +441,23 @@ export default function App() {
       const matName = String(row[1] || '').trim();
       const storageLocation = String(row[3] || '').trim();
       
-      const unrestricted = parseFloat(row[5]) || 0;
-      const transit = parseFloat(row[6]) || 0;
-      const quality = parseFloat(row[7]) || 0;
+      const unrestricted = parseNum(row[5]);
+      const transit = parseNum(row[6]);
+      const quality = parseNum(row[7]);
       
       if (!inventory[matCode]) {
         inventory[matCode] = {
           materialName: matName,
           warehouseInventory: 0,
           sectionInventory: 0,
-          underQA: 0
+          underQA: 0,
+          batches: []
         };
       }
       
-      // Unrestricted and Quality depend on storage location
       const locationQty = unrestricted + quality;
+      
+      // Unrestricted and Quality depend on storage location
       if (storageLocation === '1001') {
         inventory[matCode].warehouseInventory += locationQty;
       } else {
@@ -423,13 +504,52 @@ export default function App() {
       if (!row) continue;
       
       const matCode = String(row[matCodeCol] || '').trim();
-      const usage = parseFloat(row[usageCol]);
+      const usage = parseNum(row[usageCol]);
       
       if (matCode && !isNaN(usage) && usage > 0) {
         extraUsage[matCode] = (extraUsage[matCode] || 0) + usage;
       }
     }
     return extraUsage;
+  };
+
+  const parseSapDataBatches = (data: any[][]): Record<string, BatchInfo[]> => {
+    const batchesMap: Record<string, BatchInfo[]> = {};
+    // Skip header
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (!row) continue;
+      
+      const matCode = String(row[0] || '').trim();
+      const batchNumber = String(row[4] || '').trim();
+      
+      // Try 'Total Stock' (9) or 'Available stock' (10). Wait, total stock might be better. Let's process total stock.
+      // Often numbers in these spreadsheets have commas. Let's do replace(/,/g, '')
+      const totalStockStr = String(row[9] || '').replace(/,/g, '');
+      const locationQty = parseNum(totalStockStr);
+      
+      const expiryDateStrOrig = String(row[20] || '').trim();
+      const expiryDateStr = formatExpiryDateStr(expiryDateStrOrig);
+
+      if (matCode && batchNumber && locationQty > 0) {
+        if (!batchesMap[matCode]) batchesMap[matCode] = [];
+        
+        const existingBatch = batchesMap[matCode].find(b => b.batchNumber === batchNumber);
+        if (existingBatch) {
+          existingBatch.quantity += locationQty;
+          if (!existingBatch.expiryDateStr && expiryDateStr) {
+            existingBatch.expiryDateStr = expiryDateStr;
+          }
+        } else {
+          batchesMap[matCode].push({
+            batchNumber,
+            quantity: locationQty,
+            expiryDateStr
+          });
+        }
+      }
+    }
+    return batchesMap;
   };
 
   const handleCalculate = async () => {
@@ -451,21 +571,42 @@ export default function App() {
       const prodData = await fetchGoogleSheet(prodUrl);
       const inventoryData = await fetchGoogleSheet(inventoryUrl);
       const dbData = await fetchGoogleSheet(databaseUrl);
+      const sapRawData = await fetchGoogleSheet(sapDataUrl);
 
       const specs = parseSpec(specData, parsedConfig);
       const planned = parseProd(prodData, parsedConfig);
       const inventory = parseInventory(inventoryData);
       const database = parseDatabase(dbData);
       const extraUsageMap = parseExtraUsage(dbData);
+      const batchesMap = parseSapDataBatches(sapRawData);
+
+      // Merge batches into inventory
+      for (const [matCode, batches] of Object.entries(batchesMap)) {
+        if (inventory[matCode]) {
+          inventory[matCode].batches = batches;
+        } else {
+          // If a material is in DATA sheet but not MB52 (maybe zero MB52 stock but has batch? Usually implies MB52 is master, we can just seed it)
+          inventory[matCode] = {
+            materialName: database[matCode] ? database[matCode].materialName || 'Unknown' : 'Unknown',
+            warehouseInventory: 0,
+            sectionInventory: 0,
+            underQA: 0,
+            batches: batches
+          };
+        }
+      }
 
       if (specs.length === 0) throw new Error('No active specs (marked with "V") found in Spec Database.');
       if (planned.length === 0) throw new Error('No valid production batches found in Production Plan.');
 
       const consumption: Record<string, number> = {};
+      const rubberUsageMap: Record<string, Record<string, number>> = {};
       
       // Add extra usage from database sheet
       for (const [matCode, usage] of Object.entries(extraUsageMap)) {
         consumption[matCode] = (consumption[matCode] || 0) + usage;
+        if (!rubberUsageMap[matCode]) rubberUsageMap[matCode] = {};
+        rubberUsageMap[matCode]['Extra Usage'] = usage;
       }
       
       for (const plan of planned) {
@@ -486,6 +627,9 @@ export default function App() {
           for (const [matCode, usage] of Object.entries(spec.materials)) {
             const total = plan.batches * spec.ratio * usage;
             consumption[matCode] = (consumption[matCode] || 0) + total;
+            
+            if (!rubberUsageMap[matCode]) rubberUsageMap[matCode] = {};
+            rubberUsageMap[matCode][plan.rubberName] = (rubberUsageMap[matCode][plan.rubberName] || 0) + total;
           }
         }
       }
@@ -498,7 +642,7 @@ export default function App() {
       let rawResults: ConsumptionResult[] = Array.from(allMaterialCodes)
         .map(materialCode => {
           const totalKg = consumption[materialCode] || 0;
-          const inv = inventory[materialCode] || { materialName: 'Unknown', warehouseInventory: 0, sectionInventory: 0, underQA: 0 };
+          const inv = inventory[materialCode] || { materialName: 'Unknown', warehouseInventory: 0, sectionInventory: 0, underQA: 0, batches: [] };
           const dbInfo = database[materialCode] || { countryOfOrigin: '', category: 'Uncategorized', materialGroup: materialCode };
           const totalInventory = inv.warehouseInventory + inv.sectionInventory;
           
@@ -530,6 +674,10 @@ export default function App() {
 
           const inventoryDays = totalKg > 0 ? totalInventory / totalKg : 0;
           
+          const usedRubbersArr = Object.entries(rubberUsageMap[materialCode] || {})
+            .map(([rubberName, kg]) => ({ rubberName, kg }))
+            .sort((a, b) => b.kg - a.kg);
+
           return {
             materialCode,
             materialName: inv.materialName,
@@ -541,7 +689,9 @@ export default function App() {
             inventoryDays,
             countryOfOrigin: dbInfo.countryOfOrigin,
             category,
-            materialGroup: dbInfo.materialGroup
+            materialGroup: dbInfo.materialGroup,
+            usedRubbers: usedRubbersArr,
+            batches: inv.batches || []
           };
         })
         .filter((r): r is ConsumptionResult => r !== null);
@@ -1217,14 +1367,26 @@ export default function App() {
                       return (
                       <tr 
                         key={idx} 
-                        className="hover:bg-indigo-50/50 transition-colors even:bg-slate-50 cursor-pointer"
-                        onDoubleClick={() => setSelectedMaterialDetails(result)}
-                        title="Double click to view details"
+                        className="hover:bg-indigo-50/50 transition-colors even:bg-slate-50"
                       >
-                        <td className="px-6 py-4 text-sm font-medium text-slate-900 font-mono">
+                        <td 
+                          className="px-6 py-4 text-sm font-medium text-slate-900 font-mono cursor-pointer hover:bg-slate-200 transition-colors"
+                          onDoubleClick={() => {
+                            setDetailsViewMode('sap');
+                            setSelectedMaterialDetails(result);
+                          }}
+                          title="Double click to view SAP details"
+                        >
                           {result.materialCode}
                         </td>
-                        <td className="px-6 py-4 text-sm text-slate-700">
+                        <td 
+                          className="px-6 py-4 text-sm text-slate-700 cursor-pointer hover:bg-slate-200 transition-colors"
+                          onDoubleClick={() => {
+                            setDetailsViewMode('simple');
+                            setSelectedMaterialDetails(result);
+                          }}
+                          title="Double click to view summary details"
+                        >
                           {result.materialName}
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-700 text-right font-mono">
@@ -1273,10 +1435,265 @@ export default function App() {
           );
         })}
 
-        {selectedMaterialDetails && (
+        {selectedMaterialDetails && detailsViewMode === 'sap' && (
+          <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 className="text-lg font-semibold text-slate-900">{t.materialDetails}</h3>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => copyAsImage(materialDetailsRef)}
+                    disabled={isCopying}
+                    className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl font-medium hover:bg-emerald-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  >
+                    {isCopying ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    {isCopying ? t.copying || 'Copying...' : t.copyAsImage || 'Copy as Image'}
+                  </button>
+                  <button onClick={() => setSelectedMaterialDetails(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+              
+              <div className="p-2 md:p-6 overflow-auto bg-slate-100 flex flex-col items-center">
+                <div 
+                  ref={materialDetailsRef}
+                  className="bg-white border border-black shadow-none origin-top transition-transform"
+                  style={{
+                    width: '1000px',
+                    ...({
+                      zoom: windowWidth < 1000 ? (windowWidth - 40) / 1000 : 1
+                    } as any)
+                  }}
+                >
+                  <table className="w-full border-collapse text-center" style={{ tableLayout: 'fixed' }}>
+                    <tbody>
+                      {/* Row 1 */}
+                      <tr>
+                        <td className="border border-black bg-[#ffcc00] p-2" style={{width: '20%'}}>
+                          <div className="font-bold">SAP 编号</div>
+                          <div className="text-xs">SAP Code</div>
+                        </td>
+                        <td className="border border-black bg-[#ffcc00] p-2 font-bold font-mono text-lg" style={{width: '20%'}}>
+                          {selectedMaterialDetails.materialCode}
+                        </td>
+                        <td className="border border-black bg-[#ffcc00] p-2" style={{width: '20%'}}>
+                          <div className="font-bold">原材料名称</div>
+                          <div className="text-xs">Raw material name</div>
+                        </td>
+                        <td className="border border-black bg-[#ffcc00] p-2 font-bold text-lg" style={{width: '25%'}}>
+                          {selectedMaterialDetails.materialName}
+                        </td>
+                        <td className="border border-black bg-[#ffcc00] p-2" style={{width: '15%'}}>
+                          <div className="font-bold">欲采购</div>
+                          <div className="text-xs">订单量</div>
+                        </td>
+                      </tr>
+                      
+                      {/* Row 2 */}
+                      <tr>
+                        <td className="border border-black bg-[#92d050] p-2">
+                          <div className="font-bold">原管库存(kg)</div>
+                          <div className="text-xs">101 Inventory</div>
+                        </td>
+                        <td className="border border-black bg-white p-2 text-xl font-mono">
+                          {selectedMaterialDetails.warehouseInventory.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="border border-black bg-[#00b0f0] p-2 text-white">
+                          <div className="font-bold">现场库存(kg)</div>
+                          <div className="text-xs">Sec Inventory</div>
+                        </td>
+                        <td className="border border-black bg-white p-2 text-xl font-mono">
+                          {selectedMaterialDetails.sectionInventory.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="border border-black bg-white p-2 text-xl font-mono">
+                          
+                        </td>
+                      </tr>
+
+                      {/* Row 3 */}
+                      <tr>
+                        <td className="border border-black bg-[#92d050] p-2">
+                          <div className="font-bold">原管库存天数</div>
+                          <div className="text-xs">Available days</div>
+                        </td>
+                        <td className="border border-black bg-white p-2 text-xl font-mono">
+                          {selectedMaterialDetails.totalKg > 0 
+                            ? (selectedMaterialDetails.warehouseInventory / selectedMaterialDetails.totalKg).toLocaleString(undefined, { maximumFractionDigits: 1 })
+                            : '-'}
+                        </td>
+                        <td className="border border-black bg-[#00b0f0] p-2 text-white">
+                          <div className="font-bold">现场 库存天数</div>
+                          <div className="text-xs">MX Available days</div>
+                        </td>
+                        <td className="border border-black bg-white p-2 text-xl font-mono">
+                          {selectedMaterialDetails.totalKg > 0 
+                            ? (selectedMaterialDetails.sectionInventory / selectedMaterialDetails.totalKg).toLocaleString(undefined, { maximumFractionDigits: 1 })
+                            : '-'}
+                        </td>
+                        <td className="border border-black bg-white p-2">
+                          <div className="font-bold">订单</div>
+                          <div className="text-xs">库存天数</div>
+                        </td>
+                      </tr>
+                      
+                      {/* Row 4 */}
+                      <tr>
+                        <td className="border border-black bg-white p-2">
+                          <div className="font-bold">原管/现场 库存加总(kg)</div>
+                          <div className="text-xs">WH/MX Inventory Sum</div>
+                        </td>
+                        <td className="border border-black bg-white p-2 text-2xl font-bold font-mono">
+                          {selectedMaterialDetails.totalInventory.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="border border-black bg-white p-2">
+                          <div className="font-bold">每天使用量(kg)</div>
+                          <div className="text-xs">Daily usage</div>
+                        </td>
+                        <td className="border border-black bg-white p-2 text-xl font-mono">
+                          {selectedMaterialDetails.totalKg.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="border border-black bg-white p-2 text-xl font-mono font-bold text-center">
+                          0
+                        </td>
+                      </tr>
+
+                      {/* Row 5 */}
+                      <tr>
+                        <td className="border border-black bg-white p-2">
+                          <div className="font-bold">库存水位存放率</div>
+                          <div className="text-xs">Inventory level rate</div>
+                        </td>
+                        <td className="border border-black bg-white p-2 text-xl font-mono">
+                          {(() => {
+                            const stdInv = selectedMaterialDetails.totalKg * (selectedMaterialDetails.countryOfOrigin.toUpperCase() === 'INDIA' ? indiaDays : otherDays);
+                            return stdInv > 0 ? ((selectedMaterialDetails.totalInventory / stdInv) * 100).toFixed(0) + '%' : '-';
+                          })()}
+                        </td>
+                        <td className="border border-black bg-white p-2">
+                          <div className="font-bold">原材料产地来源</div>
+                          <div className="text-xs">Origin of materials</div>
+                        </td>
+                        <td className="border border-black bg-white p-2 text-xl font-bold">
+                          {selectedMaterialDetails.countryOfOrigin}
+                        </td>
+                        <td className="border border-black bg-white p-2">
+                          <div className="font-bold">总计库存<br/>吨数合计</div>
+                        </td>
+                      </tr>
+
+                      {/* Row 6 */}
+                      <tr>
+                        <td className="border border-black bg-white p-2">
+                          <div className="font-bold">原材料批号/有效期限</div>
+                          <div className="text-xs">Lot of materials/Expiry Date</div>
+                        </td>
+                        <td colSpan={3} className="border border-black bg-white p-2 text-sm text-left align-top font-mono">
+                          {selectedMaterialDetails.batches && selectedMaterialDetails.batches.length > 0 
+                            ? selectedMaterialDetails.batches.map((b, i) => (
+                                <div key={i} className="whitespace-nowrap">
+                                  {b.batchNumber} - {b.quantity.toLocaleString(undefined, { maximumFractionDigits: 0 })}kg {b.expiryDateStr ? `- ${b.expiryDateStr}` : ''}
+                                </div>
+                              ))
+                            : 'N/A'}
+                        </td>
+                        <td className="border border-black bg-white p-2 text-xl font-mono font-bold text-center align-middle">
+                          {selectedMaterialDetails.totalInventory.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </td>
+                      </tr>
+
+                      {/* Row 7 */}
+                      <tr>
+                        <td className="border border-black bg-white p-2">
+                          <div className="font-bold text-sm">使用最旧批数判定</div>
+                          <div className="text-xs">Use the oldest lot for determination.</div>
+                        </td>
+                        <td className="border border-black bg-white p-2 text-sm">
+                          最旧一批有效期限<br/>
+                          <span className="font-bold text-red-600">
+                            {(() => {
+                              if (!selectedMaterialDetails.batches || selectedMaterialDetails.batches.length === 0) return '还有 - 天';
+                              
+                              let oldestObj: Date | null = null;
+                              selectedMaterialDetails.batches.forEach(b => {
+                                const d = parseExpiryDate(b.expiryDateStr);
+                                if (d) {
+                                  if (!oldestObj || d < oldestObj) {
+                                    oldestObj = d;
+                                  }
+                                }
+                              });
+                              
+                              if (oldestObj) {
+                                const now = new Date();
+                                const diffTime = oldestObj.getTime() - now.getTime();
+                                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                return `还有 ${diffDays} 天`;
+                              }
+                              return '还有 - 天';
+                            })()}
+                          </span>
+                        </td>
+                        <td className="border border-black bg-white p-2 font-bold">
+                          原料使用完毕日期<br/>
+                          <span className="text-xs font-normal">material Use End date</span>
+                        </td>
+                        <td className="border border-black bg-[#ffff00] p-2 text-xl font-mono font-bold">
+                          {(() => {
+                            if (selectedMaterialDetails.totalKg > 0) {
+                              const days = selectedMaterialDetails.totalInventory / selectedMaterialDetails.totalKg;
+                              const endDate = new Date();
+                              endDate.setDate(endDate.getDate() + days);
+                              
+                              const day = endDate.getDate().toString().padStart(2, '0');
+                              const month = (endDate.getMonth() + 1).toString().padStart(2, '0');
+                              const year = endDate.getFullYear();
+                              return `${day}-${month}-${year}`;
+                            }
+                            return 'N/A';
+                          })()}
+                        </td>
+                        <td className="border border-black bg-white p-2 text-sm font-bold">
+                          原管/现场<br/>总天数合计
+                        </td>
+                      </tr>
+
+                      {/* Row 8 */}
+                      <tr>
+                        <td className="border border-black bg-white p-2" style={{height: '100px'}}>
+                          <div className="font-bold">原材料使用<br/>的胶料种类</div>
+                        </td>
+                        <td colSpan={3} className="border border-black bg-white p-3 text-left align-middle font-mono text-sm leading-relaxed text-slate-700">
+                          {selectedMaterialDetails.usedRubbers && selectedMaterialDetails.usedRubbers.length > 0 
+                            ? selectedMaterialDetails.usedRubbers.map(ur => `|${ur.rubberName}_(${ur.kg.toFixed(0)} kg)`).join(' ') + ' |'
+                            : 'N/A'}
+                        </td>
+                        <td className="border border-black bg-[#ffff00] p-2 text-3xl font-mono font-bold text-center align-middle">
+                          {selectedMaterialDetails.totalKg > 0 
+                            ? selectedMaterialDetails.inventoryDays.toLocaleString(undefined, { maximumFractionDigits: 1 })
+                            : '-'}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  
+                  {selectedMaterialDetails.underQA > 0 && (
+                    <div className="mt-4 p-4 border border-amber-300 bg-amber-50">
+                      <p className="text-sm font-bold text-amber-700">Under QA Testing</p>
+                      <p className="text-xl font-bold font-mono text-amber-800">{selectedMaterialDetails.underQA.toLocaleString()}</p>
+                    </div>
+                  )}
+
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {selectedMaterialDetails && detailsViewMode === 'simple' && (
           <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col">
-              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+               <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                 <h3 className="text-lg font-semibold text-slate-900">{t.materialDetails}</h3>
                 <button onClick={() => setSelectedMaterialDetails(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
                   <X className="w-5 h-5" />
@@ -1338,10 +1755,37 @@ export default function App() {
                     <p className="text-sm font-medium text-slate-500">{t.groupTotalInv}</p>
                     <p className="text-base font-semibold text-slate-900 font-mono">{selectedMaterialDetails.groupTotalInventory?.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) || '-'}</p>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-slate-500">{t.groupInvDays || 'Grp Days'}</p>
-                    <p className="text-base font-semibold text-slate-900 font-mono">{selectedMaterialDetails.groupTotalUsage! > 0 ? selectedMaterialDetails.groupTotalInvDays?.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '-'}</p>
-                  </div>
+                  {selectedMaterialDetails.groupTotalUsage! > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-slate-500">{t.groupInvDays || 'Grp Days'}</p>
+                      <p className="text-base font-semibold text-slate-900 font-mono">{selectedMaterialDetails.groupTotalInvDays?.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) || '-'}</p>
+                    </div>
+                  )}
+                  {selectedMaterialDetails.batches && selectedMaterialDetails.batches.length > 0 && (
+                    <div className="space-y-2 md:col-span-2 mt-4">
+                      <p className="text-sm font-medium text-slate-500">Batches & Expiry</p>
+                      <div className="overflow-x-auto rounded-lg border border-slate-200">
+                        <table className="w-full text-sm text-left">
+                          <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium">
+                            <tr>
+                              <th className="px-4 py-2">Batch Number</th>
+                              <th className="px-4 py-2 text-right">Quantity (kg)</th>
+                              <th className="px-4 py-2 text-right">Expiry Date</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 bg-white font-mono">
+                            {selectedMaterialDetails.batches.map((b, i) => (
+                              <tr key={i} className="hover:bg-slate-50">
+                                <td className="px-4 py-2">{b.batchNumber}</td>
+                                <td className="px-4 py-2 text-right">{b.quantity.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                                <td className="px-4 py-2 text-right text-slate-600">{b.expiryDateStr || '-'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">

@@ -820,7 +820,7 @@ export default function App() {
         <div className="flex flex-col items-center gap-6 mb-8">
           <header className="text-center space-y-2">
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-              {t.title} {t.subtitle}
+              {t.title}
             </h1>
           </header>
           <div className="flex flex-wrap justify-center gap-3">
@@ -870,8 +870,8 @@ export default function App() {
         </div>
 
         {showDetailedSummaryModal && (
-          <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-7xl max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-2 sm:p-4">
+            <div className="bg-white lg:rounded-2xl shadow-xl w-full h-full max-w-none overflow-hidden flex flex-col">
               <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                 <h3 className="text-lg font-semibold text-slate-900">{t.originSummary}</h3>
                 <button onClick={() => setShowDetailedSummaryModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
@@ -1040,8 +1040,8 @@ export default function App() {
         )}
 
         {showSummaryModal && (
-          <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-2 sm:p-4">
+            <div className="bg-white lg:rounded-2xl shadow-xl w-full h-full max-w-none overflow-hidden flex flex-col">
               <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                 <h3 className="text-lg font-semibold text-slate-900">{t.summary}</h3>
                 <button onClick={() => setShowSummaryModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
@@ -1090,11 +1090,11 @@ export default function App() {
                             <table className="w-full text-sm text-left border-collapse">
                               <thead>
                                 <tr className="bg-[#f8fafc] border-b border-slate-300">
-                                  <th className="px-4 py-3 font-bold text-slate-700 bg-slate-100 border-r border-slate-300">{t.rawMaterialCat}</th>
-                                  <th className="px-4 py-3 font-bold text-slate-700 text-right border-r border-slate-300">{t.whInventoryTons}</th>
-                                  <th className="px-4 py-3 font-bold text-white text-right bg-[#00b0f0] border-r border-slate-300">{t.stdInventoryTons}</th>
-                                  <th className="px-4 py-3 font-bold text-slate-700 text-right bg-[#ffd966] border-r border-slate-300">{t.usageRatio}</th>
-                                  <th className="px-4 py-3 font-bold text-white text-right bg-[#00b0f0]">{t.inventoryLevelRate}</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 bg-slate-100 border-r border-slate-300 text-center align-middle">{t.rawMaterialCat}</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 text-center align-middle border-r border-slate-300">{t.whInventoryTons}</th>
+                                  <th className="px-4 py-3 font-bold text-white text-center align-middle bg-[#00b0f0] border-r border-slate-300">{t.stdInventoryTons}</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 text-center align-middle bg-[#ffd966] border-r border-slate-300">{t.usageRatio}</th>
+                                  <th className="px-4 py-3 font-bold text-white text-center align-middle bg-[#00b0f0]">{t.inventoryLevelRate}</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-200">
@@ -1133,11 +1133,11 @@ export default function App() {
                             <table className="w-full text-sm text-left border-collapse">
                               <thead>
                                 <tr className="bg-[#f8fafc] border-b border-slate-300">
-                                  <th className="px-4 py-3 font-bold text-slate-700 bg-slate-100 border-r border-slate-300">{t.rawMaterialCat}</th>
-                                  <th className="px-4 py-3 font-bold text-slate-700 text-right border-r border-slate-300">{t.whInventoryTons}</th>
-                                  <th className="px-4 py-3 font-bold text-slate-700 text-right bg-[#92d050] border-r border-slate-300">{t.dailyUsageTons}</th>
-                                  <th className="px-4 py-3 font-bold text-slate-700 text-right bg-[#ffd966] border-r border-slate-300">{t.usageRatio}</th>
-                                  <th className="px-4 py-3 font-bold text-slate-900 text-right bg-[#ffcc00]">{t.avgInvDays}</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 bg-slate-100 border-r border-slate-300 text-center align-middle">{t.rawMaterialCat}</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 text-center align-middle border-r border-slate-300">{t.whInventoryTons}</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 text-center align-middle bg-[#92d050] border-r border-slate-300">{t.dailyUsageTons}</th>
+                                  <th className="px-4 py-3 font-bold text-slate-700 text-center align-middle bg-[#ffd966] border-r border-slate-300">{t.usageRatio}</th>
+                                  <th className="px-4 py-3 font-bold text-slate-900 text-center align-middle bg-[#ffcc00]">{t.avgInvDays}</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-200">
@@ -1249,14 +1249,14 @@ export default function App() {
 
         {/* Filters and Search */}
         {Object.keys(categorizedResults).length > 0 && (
-          <div className="mb-6 flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div className="mb-8 flex flex-col sm:flex-row items-center justify-center gap-8">
             {/* Category Filter Dropdown */}
-            <div className="w-full sm:w-64">
+            <div className="w-full sm:w-[500px]">
               <div className="relative">
                 <select
                   value={selectedCategory || ''}
                   onChange={(e) => setSelectedCategory(e.target.value || null)}
-                  className="w-full appearance-none bg-white border border-slate-200 text-slate-700 py-2.5 px-4 pr-10 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-sm"
+                  className="w-full appearance-none bg-white border border-slate-200 text-slate-700 py-4 px-6 pr-14 rounded-2xl shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-bold text-lg"
                 >
                   <option value="">{t.allCategories}</option>
                   {Object.keys(categorizedResults).sort().map(cat => (
@@ -1265,19 +1265,19 @@ export default function App() {
                     </option>
                   ))}
                 </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
-                  <ChevronDown className="h-4 w-4" />
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-5 text-slate-500">
+                  <ChevronDown className="h-6 w-6" />
                 </div>
               </div>
             </div>
 
             {/* Search Bar */}
-            <div className="w-full sm:w-64 bg-white px-4 py-2.5 rounded-xl shadow-sm border border-slate-200 flex items-center gap-3">
-              <Search className="w-4 h-4 text-slate-400" />
+            <div className="w-full sm:w-[500px] bg-white px-6 py-4 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-5">
+              <Search className="w-6 h-6 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search material..."
-                className="flex-1 bg-transparent border-none focus:ring-0 text-slate-900 placeholder:text-slate-400 outline-none text-sm"
+                placeholder={t.searchPlaceholder || "Search material..."}
+                className="flex-1 bg-transparent border-none focus:ring-0 text-slate-900 placeholder:text-slate-400 outline-none text-lg font-bold"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -1439,8 +1439,8 @@ export default function App() {
         })}
 
         {selectedMaterialDetails && detailsViewMode === 'sap' && (
-          <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-2 sm:p-4">
+            <div className="bg-white lg:rounded-2xl shadow-xl w-full h-full max-w-none overflow-hidden flex flex-col">
               <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                 <h3 className="text-lg font-semibold text-slate-900">{t.materialDetails}</h3>
                 <div className="flex items-center gap-3">
@@ -1474,36 +1474,36 @@ export default function App() {
                       {/* Row 1 */}
                       <tr>
                         <td className="border border-black bg-[#ffcc00] p-2" style={{width: '20%'}}>
-                          <div className="font-bold">SAP 编号</div>
+                          <div className="font-bold">SAP 編號</div>
                           <div className="text-xs">SAP Code</div>
                         </td>
                         <td className="border border-black bg-[#ffcc00] p-2 font-bold font-mono text-lg" style={{width: '20%'}}>
                           {selectedMaterialDetails.materialCode}
                         </td>
                         <td className="border border-black bg-[#ffcc00] p-2" style={{width: '20%'}}>
-                          <div className="font-bold">原材料名称</div>
+                          <div className="font-bold">原材料名稱</div>
                           <div className="text-xs">Raw material name</div>
                         </td>
                         <td className="border border-black bg-[#ffcc00] p-2 font-bold text-lg" style={{width: '25%'}}>
                           {selectedMaterialDetails.materialName}
                         </td>
                         <td className="border border-black bg-[#ffcc00] p-2" style={{width: '15%'}}>
-                          <div className="font-bold">欲采购</div>
-                          <div className="text-xs">订单量</div>
+                          <div className="font-bold">欲採購</div>
+                          <div className="text-xs">訂單量</div>
                         </td>
                       </tr>
                       
                       {/* Row 2 */}
                       <tr>
                         <td className="border border-black bg-[#92d050] p-2">
-                          <div className="font-bold">原管库存(kg)</div>
+                          <div className="font-bold">原管庫存(kg)</div>
                           <div className="text-xs">101 Inventory</div>
                         </td>
                         <td className="border border-black bg-white p-2 text-xl font-mono">
                           {selectedMaterialDetails.warehouseInventory.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </td>
                         <td className="border border-black bg-[#00b0f0] p-2 text-white">
-                          <div className="font-bold">现场库存(kg)</div>
+                          <div className="font-bold">現場庫存(kg)</div>
                           <div className="text-xs">Sec Inventory</div>
                         </td>
                         <td className="border border-black bg-white p-2 text-xl font-mono">
@@ -1523,7 +1523,7 @@ export default function App() {
                       {/* Row 3 */}
                       <tr>
                         <td className="border border-black bg-[#92d050] p-2">
-                          <div className="font-bold">原管库存天数</div>
+                          <div className="font-bold">原管庫存天數</div>
                           <div className="text-xs">Available days</div>
                         </td>
                         <td className="border border-black bg-white p-2 text-xl font-mono">
@@ -1532,7 +1532,7 @@ export default function App() {
                             : '-'}
                         </td>
                         <td className="border border-black bg-[#00b0f0] p-2 text-white">
-                          <div className="font-bold">现场 库存天数</div>
+                          <div className="font-bold">現場 庫存天數</div>
                           <div className="text-xs">MX Available days</div>
                         </td>
                         <td className="border border-black bg-white p-2 text-xl font-mono">
@@ -1541,15 +1541,15 @@ export default function App() {
                             : '-'}
                         </td>
                         <td className="border border-black bg-white p-2">
-                          <div className="font-bold">订单</div>
-                          <div className="text-xs">库存天数</div>
+                          <div className="font-bold">訂單</div>
+                          <div className="text-xs">庫存天數</div>
                         </td>
                       </tr>
                       
                       {/* Row 4 */}
                       <tr>
                         <td className="border border-black bg-white p-2">
-                          <div className="font-bold">原管/现场 库存加总(kg)</div>
+                          <div className="font-bold">原管/現場 庫存加總(kg)</div>
                           <div className="text-xs">WH/MX Inventory Sum</div>
                         </td>
                         <td className="border border-black bg-white p-2 text-2xl font-bold font-mono">
@@ -1576,7 +1576,7 @@ export default function App() {
                       {/* Row 5 */}
                       <tr>
                         <td className="border border-black bg-white p-2">
-                          <div className="font-bold">库存水位存放率</div>
+                          <div className="font-bold">庫存水位存放率</div>
                           <div className="text-xs">Inventory level rate</div>
                         </td>
                         <td className="border border-black bg-white p-2 text-xl font-mono">
@@ -1586,21 +1586,21 @@ export default function App() {
                           })()}
                         </td>
                         <td className="border border-black bg-white p-2">
-                          <div className="font-bold">原材料产地来源</div>
+                          <div className="font-bold">原材料產地來源</div>
                           <div className="text-xs">Origin of materials</div>
                         </td>
                         <td className="border border-black bg-white p-2 text-xl font-bold">
                           {selectedMaterialDetails.countryOfOrigin}
                         </td>
                         <td className="border border-black bg-white p-2">
-                          <div className="font-bold">总计库存<br/>吨数合计</div>
+                          <div className="font-bold">總計庫存<br/>噸數合計</div>
                         </td>
                       </tr>
 
                       {/* Row 6 */}
                       <tr>
                         <td className="border border-black bg-white p-2">
-                          <div className="font-bold">原材料批号/有效期限</div>
+                          <div className="font-bold">原材料批號/有效期限</div>
                           <div className="text-xs">Lot of materials/Expiry Date</div>
                         </td>
                         <td colSpan={3} className="border border-black bg-white p-2 text-sm text-left align-top font-mono">
@@ -1620,14 +1620,14 @@ export default function App() {
                       {/* Row 7 */}
                       <tr>
                         <td className="border border-black bg-white p-2">
-                          <div className="font-bold text-sm">使用最旧批数判定</div>
+                          <div className="font-bold text-sm">使用最舊批數判定</div>
                           <div className="text-xs">Use the oldest lot for determination.</div>
                         </td>
                         <td className="border border-black bg-white p-2 text-sm">
-                          最旧一批有效期限<br/>
+                          最舊一批有效期限<br/>
                           <span className="font-bold text-red-600">
                             {(() => {
-                              if (!selectedMaterialDetails.batches || selectedMaterialDetails.batches.length === 0) return '还有 - 天';
+                              if (!selectedMaterialDetails.batches || selectedMaterialDetails.batches.length === 0) return '還有 - 天';
                               
                               let oldestObj: Date | null = null;
                               selectedMaterialDetails.batches.forEach(b => {
@@ -1643,14 +1643,14 @@ export default function App() {
                                 const now = new Date();
                                 const diffTime = oldestObj.getTime() - now.getTime();
                                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                                return `还有 ${diffDays} 天`;
+                                return `還有 ${diffDays} 天`;
                               }
-                              return '还有 - 天';
+                              return '還有 - 天';
                             })()}
                           </span>
                         </td>
                         <td className="border border-black bg-white p-2 font-bold">
-                          原料使用完毕日期<br/>
+                          原料使用完畢日期<br/>
                           <span className="text-xs font-normal">material Use End date</span>
                         </td>
                         <td className="border border-black bg-[#ffff00] p-2 text-xl font-mono font-bold">
@@ -1669,14 +1669,14 @@ export default function App() {
                           })()}
                         </td>
                         <td className="border border-black bg-white p-2 text-sm font-bold">
-                          原管/现场<br/>总天数合计
+                          原管/現場<br/>總天數合計
                         </td>
                       </tr>
-
+                      
                       {/* Row 8 */}
                       <tr>
                         <td className="border border-black bg-white p-2" style={{height: '100px'}}>
-                          <div className="font-bold">原材料使用<br/>的胶料种类</div>
+                          <div className="font-bold">原材料使用<br/>的膠料種類</div>
                         </td>
                         <td colSpan={3} className="border border-black bg-white p-3 text-left align-middle font-mono text-sm leading-relaxed text-slate-700">
                           {selectedMaterialDetails.usedRubbers && selectedMaterialDetails.usedRubbers.length > 0 
@@ -1711,8 +1711,8 @@ export default function App() {
         )}
 
         {selectedMaterialDetails && detailsViewMode === 'simple' && (
-          <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col">
+          <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-2 sm:p-4">
+            <div className="bg-white lg:rounded-2xl shadow-xl w-full h-full max-w-none overflow-hidden flex flex-col">
                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                 <h3 className="text-lg font-semibold text-slate-900">{t.materialDetails}</h3>
                 <button onClick={() => setSelectedMaterialDetails(null)} className="text-slate-400 hover:text-slate-600 transition-colors">

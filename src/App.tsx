@@ -138,6 +138,7 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMaterialDetails, setSelectedMaterialDetails] = useState<ConsumptionResult | null>(null);
+  const [orderQuantity, setOrderQuantity] = useState<string>('');
   const [detailsViewMode, setDetailsViewMode] = useState<'simple' | 'sap'>('simple');
   const materialDetailsRef = useRef<HTMLDivElement>(null);
   const [lang, setLang] = useState<'en' | 'zh'>('en');
@@ -1374,6 +1375,7 @@ export default function App() {
                           onDoubleClick={() => {
                             setDetailsViewMode('sap');
                             setSelectedMaterialDetails(result);
+                            setOrderQuantity('');
                           }}
                           title="Double click to view SAP details"
                         >
@@ -1384,6 +1386,7 @@ export default function App() {
                           onDoubleClick={() => {
                             setDetailsViewMode('simple');
                             setSelectedMaterialDetails(result);
+                            setOrderQuantity('');
                           }}
                           title="Double click to view summary details"
                         >
@@ -1506,8 +1509,14 @@ export default function App() {
                         <td className="border border-black bg-white p-2 text-xl font-mono">
                           {selectedMaterialDetails.sectionInventory.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </td>
-                        <td className="border border-black bg-white p-2 text-xl font-mono">
-                          
+                        <td className="border border-black bg-white p-0 align-middle text-center" style={{ verticalAlign: 'middle' }}>
+                          <input 
+                            type="number" 
+                            className="w-full text-center outline-none bg-transparent font-mono text-xl py-4"
+                            placeholder="Qty"
+                            value={orderQuantity}
+                            onChange={(e) => setOrderQuantity(e.target.value)}
+                          />
                         </td>
                       </tr>
 
@@ -1554,7 +1563,13 @@ export default function App() {
                           {selectedMaterialDetails.totalKg.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </td>
                         <td className="border border-black bg-white p-2 text-xl font-mono font-bold text-center">
-                          0
+                          {(() => {
+                            const parsedOrder = parseNum(orderQuantity);
+                            if (parsedOrder > 0 && selectedMaterialDetails.totalKg > 0) {
+                               return (parsedOrder / selectedMaterialDetails.totalKg).toLocaleString(undefined, { maximumFractionDigits: 1 });
+                            }
+                            return '0';
+                          })()}
                         </td>
                       </tr>
 
@@ -1669,9 +1684,14 @@ export default function App() {
                             : 'N/A'}
                         </td>
                         <td className="border border-black bg-[#ffff00] p-2 text-3xl font-mono font-bold text-center align-middle">
-                          {selectedMaterialDetails.totalKg > 0 
-                            ? selectedMaterialDetails.inventoryDays.toLocaleString(undefined, { maximumFractionDigits: 1 })
-                            : '-'}
+                          {(() => {
+                            if (selectedMaterialDetails.totalKg > 0) {
+                              const parsedOrder = parseNum(orderQuantity);
+                              const totalDays = (selectedMaterialDetails.totalInventory + parsedOrder) / selectedMaterialDetails.totalKg;
+                              return totalDays.toLocaleString(undefined, { maximumFractionDigits: 1 });
+                            }
+                            return '-';
+                          })()}
                         </td>
                       </tr>
                     </tbody>

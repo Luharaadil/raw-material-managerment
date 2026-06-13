@@ -32,16 +32,6 @@ This project is configured to deploy automatically to GitHub Pages using GitHub 
 3. Under **Build and deployment** > **Source**, select **GitHub Actions**.
 4. The next time you push to the `main` branch, the deployment will trigger automatically.
 
-### Important Note on Base Path
+### Note on Base Path
 
-If your repository name is different from `Material-Consumption-Calculator-1.0`, you must update the `base` field in `vite.config.ts`:
-
-```typescript
-// vite.config.ts
-export default defineConfig(({mode}) => {
-  return {
-    base: '/YOUR_REPO_NAME/',
-    // ...
-  };
-});
-```
+The project is pre-configured with a relative base path (`base: './'`) in `vite.config.ts`. This allows the application to resolve all compiled assets (`.js`, `.css`, and images) correctly on GitHub Pages out of the box, regardless of your repository's name or whether you utilize a custom domain. No manual path updates are required!
